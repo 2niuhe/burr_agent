@@ -36,7 +36,6 @@ async def get_llm_response(messages: list) -> str:
         )
 
         full_response = ""
-        print("AI: ", end="", flush=True)
         async for chunk in response:
             if chunk.choices[0].delta.content is not None:
                 content = chunk.choices[0].delta.content
