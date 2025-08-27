@@ -1,9 +1,10 @@
 import asyncio
 import traceback
-from typing import Dict, Any, Optional, AsyncGenerator
+import os
+from typing import Dict, Any, Optional
 import httpx
 from mcp import ClientSession
-from mcp.client.stdio import stdio_client
+from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool, TextContent
 
 
@@ -12,19 +13,21 @@ class StreamableMCPClient:
         self.session: Optional[ClientSession] = None
         self.available_tools: list[Tool] = []
         self._session_context = None
-        self._streams_context = None
+        self._transport_context = None
 
     async def connect(self, server_url: str) -> bool:
         """
         Connect to an MCP server via HTTP streaming.
         """
         try:
-            # Create HTTP streaming client
-            self._streams_context = httpx_client(url=server_url)
-            streams = await self._streams_context.__aenter__()
+            print(f"Connecting to MCP server {server_url}")
+            
+            # Store the context managers but don't enter them yet
+            self._transport_context = streamablehttp_client(url=server_url)
+            transport = await self._transport_context.__aenter__()
 
             # Create MCP session
-            self._session_context = ClientSession(*streams)
+            self._session_context = ClientSession(transport[0], transport[1])
             self.session = await self._session_context.__aenter__()
 
             # Initialize session
@@ -34,6 +37,9 @@ class StreamableMCPClient:
             response = await self.session.list_tools()
             self.available_tools = response.tools
 
+            tool_names = [tool.name for tool in self.available_tools]
+            print(f'Connected successfully! Available tools: {tool_names}')
+            
             return True
         except Exception as e:
             print(f'Connection failed: {e}')
@@ -49,6 +55,9 @@ class StreamableMCPClient:
             return "Not connected to MCP server"
         
         try:
+            print(f'Calling tool: {tool_name}')
+            print(f'Parameters: {parameters}')
+
             result = await self.session.call_tool(tool_name, parameters)
 
             if hasattr(result, 'content'):
@@ -60,35 +69,14 @@ class StreamableMCPClient:
             else:
                 content_str = str(result)
             
-            return content_str or "No output"
+            output = content_str or "No output"
+            print(f"Tool result: {output}")
+            return output
         except Exception as e:
             error_msg = f"Tool execution failed: {e}"
             print(error_msg)
             print(traceback.format_exc())
             return error_msg
-
-    async def call_tool_streaming(self, tool_name: str, parameters: Dict[str, Any]) -> AsyncGenerator[str, None]:
-        """
-        Call a tool with parameters and stream the result.
-        """
-        if not self.session:
-            yield "Not connected to MCP server"
-            return
-        
-        try:
-            result = await self.session.call_tool(tool_name, parameters)
-            
-            if hasattr(result, 'content'):
-                for item in result.content:
-                    if hasattr(item, 'text'):
-                        yield item.text
-            else:
-                yield str(result)
-        except Exception as e:
-            error_msg = f"Tool execution failed: {e}"
-            print(error_msg)
-            print(traceback.format_exc())
-            yield error_msg
 
     async def cleanup(self):
         """
@@ -100,50 +88,48 @@ class StreamableMCPClient:
                 self._session_context = None
                 self.session = None
             
-            if self._streams_context:
-                await self._streams_context.__aexit__(None, None, None)
-                self._streams_context = None
+            if self._transport_context:
+                await self._transport_context.__aexit__(None, None, None)
+                self._transport_context = None
+                
+            print("Cleanup completed successfully")
         except Exception as e:
             print(f"Error during cleanup: {e}")
             print(traceback.format_exc())
 
 
-def httpx_client(url: str):
+# Utility functions for connecting to MCP and calling tools
+async def connect_to_mcp() -> Optional[StreamableMCPClient]:
     """
-    Create an HTTP streaming client for MCP.
-    This is a context manager that yields send and receive streams.
-    """
-    class HTTPXClientContextManager:
-        def __init__(self, url: str):
-            self.url = url
-            self.client: Optional[httpx.AsyncClient] = None
-            
-        async def __aenter__(self):
-            self.client = httpx.AsyncClient(timeout=None)
-            
-            # Create send stream (POST requests)
-            async def send_stream():
-                async def send_message(message: str):
-                    response = await self.client.post(
-                        self.url,
-                        content=message,
-                        headers={"Content-Type": "application/json"}
-                    )
-                    response.raise_for_status()
-                return send_message
-            
-            # Create receive stream (Server-Sent Events)
-            async def receive_stream():
-                async with self.client.stream("GET", f"{self.url}/stream") as response:
-                    response.raise_for_status()
-                    async for line in response.aiter_lines():
-                        if line.startswith("data: "):
-                            yield line[6:]  # Remove "data: " prefix
-                            
-            return (await send_stream(), receive_stream())
-        
-        async def __aexit__(self, exc_type, exc_val, exc_tb):
-            if self.client:
-                await self.client.aclose()
+    Connect to MCP server using URL from environment variables.
     
-    return HTTPXClientContextManager(url)
+    Expects MCP_SERVER_URL environment variable to be set.
+    """
+    server_url = os.getenv('MCP_SERVER_URL')
+    if not server_url:
+        print("MCP_SERVER_URL environment variable not set")
+        return None
+    
+    client = StreamableMCPClient()
+    if await client.connect(server_url):
+        return client
+    else:
+        print("Failed to connect to MCP server")
+        return None
+
+
+async def call_mcp_tool(tool_name: str, parameters: Dict[str, Any]) -> str:
+    """
+    Connect to MCP server and call a tool with parameters.
+    
+    Expects MCP_SERVER_URL environment variable to be set.
+    """
+    client = await connect_to_mcp()
+    if not client:
+        return "Failed to connect to MCP server"
+    
+    try:
+        result = await client.call_tool(tool_name, parameters)
+        return result
+    finally:
+        await client.cleanup()
