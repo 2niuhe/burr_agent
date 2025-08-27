@@ -1,0 +1,3 @@
+[submodule "burr"]
+	path = burr
+	url = https://github.com/apache/burr.git
