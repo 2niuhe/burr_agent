@@ -17,7 +17,7 @@ help: Makefile
 ## install: Install dependency
 install:
 	@echo " > Installing dependency"
-	@pip install -r dev-requirements.txt
+	@uv pip install -r dev-requirements.txt
 
 ## ruff: ruff check pep8
 ruff:
