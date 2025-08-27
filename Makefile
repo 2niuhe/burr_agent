@@ -69,6 +69,12 @@ pipedit:
 	@echo " > Pip Install in edit mode"
 	@pip install -e .
 
+## submodule: Sync and update git submodules
+submodule:
+	@echo " > Syncing and updating git submodules"
+	@git submodule sync
+	@git submodule update --init --recursive
+
 ## pypitest: Upload package to testpypi
 pypitest: piptar
 	@echo "Uploading to testpypi"
