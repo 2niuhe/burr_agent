@@ -10,8 +10,12 @@ from utils.mcp import StreamableMCPClient, call_mcp_tool
 # 导入全局logger
 from logger import logger
 
-# 2. 定义Actions
-# Actions现在直接与State对象交互，该对象表现得像一个字典。
+@action(reads=[], writes=["user_input"])
+def prompt(state: State, user_input: str) -> tuple[dict, State]:
+    """从用户处获取输入。"""
+    return {"user_input": user_input}, state.update(user_input=user_input)
+
+
 @action(reads=["user_input", "chat_history"], writes=["chat_history"])
 async def response(state: State) -> tuple[dict, State]:
     """调用LLM并获取响应，然后更新对话历史。"""
@@ -65,11 +69,6 @@ async def response(state: State) -> tuple[dict, State]:
     result = {"answer": answer}
     return result, final_state
 
-@action(reads=[], writes=["user_input"])
-def prompt(state: State, user_input: str) -> tuple[dict, State]:
-    """从用户处获取输入。"""
-    return {"user_input": user_input}, state.update(user_input=user_input)
-
 
 async def handle_tool_calls(messages: list, response: dict) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
@@ -118,12 +117,10 @@ async def handle_tool_calls(messages: list, response: dict) -> tuple[List[Dict[s
     return new_messages, updated_messages
 
 
-def main():
-    """主函数，用于构建和运行Burr应用。"""
-
-    app = (
+def application():
+    """构建Burr应用。"""
+    return (
         ApplicationBuilder()
-        # 直接用字典初始化状态，定义初始结构
         .with_state(chat_history=[], user_input="")
         .with_actions(
             prompt=prompt,
@@ -131,38 +128,34 @@ def main():
         )
         .with_transitions(
             ("prompt", "response"),
-            ("response", "prompt"),  # 循环回到prompt，等待下一次输入
+            ("response", "prompt"),
         )
         .with_entrypoint("prompt")
+        .with_tracker("local", project="burr_agent")
         .build()
     )
 
-    # 4. 运行应用
+
+async def chat():
+    """运行聊天应用。"""
+    app = application()
+    
     logger.info("欢迎来到Burr驱动的异步聊天机器人！")
     logger.info("输入 'exit' 或 'quit' 来结束对话。")
     
     while True:
-        try:
-            user_message = input("你: ")
-            if user_message.lower() in ["exit", "quit"]:
-                logger.info("用户选择退出对话")
-                print("再见!")
-                break
-            
-            # 直接运行应用的异步方法
-            # 我们传入用户输入作为prompt action的参数
-            result = asyncio.run(app.arun(halt_after=["response"], inputs={"user_input": user_message}))
-            # result 是一个三元组: (action, result_dict, final_state)
-            print(f"AI: {result[1]['answer']}")
-
-        except KeyboardInterrupt:
-            logger.info("用户通过键盘中断退出对话")
-            print("\n再见!")
+        user_message = input("你: ")
+        if user_message.lower() in ["exit", "quit"]:
+            print("再见!")
             break
-        except Exception as e:
-            logger.error(f"运行应用时发生错误: {e}")
-            print(f"\n发生错误: {e}")
-            print("程序将继续运行，或者输入 'exit' 或 'quit' 来结束对话。")
+            
+        # 运行应用
+        action, result, state = await app.arun(
+            halt_after=["response"], 
+            inputs={"user_input": user_message}
+        )
+        print(f"AI: {result['answer']}")
+
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(chat())
