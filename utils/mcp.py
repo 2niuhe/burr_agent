@@ -47,6 +47,28 @@ class StreamableMCPClient:
             await self.cleanup()
             return False
 
+    def get_tools_for_llm(self) -> list[dict]:
+        """
+        Convert available MCP tools to the format required by LLM APIs.
+        
+        Returns:
+            List of tools in the format expected by LLM APIs.
+        """
+        tools = []
+        for tool in self.available_tools:
+            # 根据LLM API的要求格式化工具
+            tool_dict = {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description or "",
+                    "parameters": tool.inputSchema
+                }
+            }
+            tools.append(tool_dict)
+        
+        return tools
+
     async def call_tool(self, tool_name: str, parameters: Dict[str, Any]) -> str:
         """
         Call a tool with parameters and return the result.

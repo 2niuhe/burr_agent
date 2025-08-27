@@ -1,7 +1,7 @@
 import logging
 import sys
 
-LOG_LEVEL = logging.ERROR
+LOG_LEVEL = logging.INFO
 
 # 创建一个全局的日志记录器实例
 def get_logger(name: str = "burr_agent", level: int = LOG_LEVEL) -> logging.Logger:
