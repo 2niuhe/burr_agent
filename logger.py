@@ -1,7 +1,7 @@
 import logging
 import sys
 
-LOG_LEVEL = logging.INFO
+LOG_LEVEL = logging.ERROR
 
 
 # 创建一个全局的日志记录器实例

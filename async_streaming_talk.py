@@ -45,54 +45,53 @@ async def response(state: State) -> Tuple[dict, State]:
         chat_history=system_message
     )
 
-    # First use ask to check if tool calls are needed (now with streaming)
+    # Single LLM call with streaming
     llm_response_stream = await llm.ask(
         state_with_user_message["chat_history"], stream=True, tools=tools
     )
     
-    # Collect all chunks from the stream to reconstruct the full response
+    # Collect all chunks and detect tool calls
     llm_response_chunks = []
     tool_calls_detected = False
+    tool_calls = []
+    seen_tool_call_ids = set()  # Track unique tool call IDs
     
     async for chunk in llm_response_stream:
-        logger.info(f"Chunk: {chunk}")
         if isinstance(chunk, dict) and chunk.get("type") == "tool_call":
             tool_calls_detected = True
-            # If we detect tool calls, we can break early as we only need to know if tools are called
-            break
+            # Store tool call information, avoiding duplicates
+            for tool_call in chunk.get("tool_calls", []):
+                if tool_call.id not in seen_tool_call_ids:
+                    seen_tool_call_ids.add(tool_call.id)
+                    tool_calls.append(tool_call)
         elif isinstance(chunk, str):
             llm_response_chunks.append(chunk)
+            # Stream content chunks to user
+            yield {"answer": chunk}, None
     
-    # Reconstruct the full response if no tool calls were detected
-    if not tool_calls_detected:
-        llm_response_content = "".join(llm_response_chunks)
-        # Create a mock response object to match the expected structure
-        from openai.types.chat import ChatCompletionMessage
-        llm_response = ChatCompletionMessage(
-            content=llm_response_content,
-            role="assistant",
-            tool_calls=None
-        )
-    else:
-        # If tool calls were detected, we need to get the full response with tool calls
-        llm_response = await llm.ask(
-            state_with_user_message["chat_history"], stream=False, tools=tools
-        )
-
-    # Handle tool calls
-    if llm_response.tool_calls:
-        logger.info(f"Tool calls detected: {llm_response.tool_calls}")
-
+    # Handle tool calls if detected
+    if tool_calls_detected and tool_calls:
+        logger.info(f"Tool calls detected: {tool_calls}")
+        
         # Add tool call message to history
-        tool_call_message = {"role": "assistant", "tool_calls": llm_response.tool_calls}
+        tool_call_message = {"role": "assistant", "tool_calls": tool_calls}
         state_with_tool_calls = state_with_user_message.append(
             chat_history=tool_call_message
         )
 
         # Execute tool calls with MCP asynchronously
-        for tool_call in llm_response.tool_calls:
+        for tool_call in tool_calls:
+            # Extract function name and arguments from ChoiceDeltaToolCall object
             function_name = tool_call.function.name
-            function_args = json.loads(tool_call.function.arguments)
+            function_args = tool_call.function.arguments
+            
+            # Parse arguments if it's a string
+            if isinstance(function_args, str):
+                try:
+                    function_args = json.loads(function_args)
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse tool arguments: {function_args}")
+                    function_args = {}
 
             logger.info(f"Calling tool: {function_name} with args: {function_args}")
             tool_result = await mcp_client.call_tool(function_name, function_args)
@@ -111,12 +110,12 @@ async def response(state: State) -> Tuple[dict, State]:
                 chat_history=tool_result_message
             )
 
-        # Get final reply using ask function (streaming for tool-based responses)
+        # Get final reply using the same streaming approach
         final_content_stream = await llm.ask(
             state_with_tool_calls["chat_history"], stream=True
         )
 
-        # Stream output final reply (as chunks) to caller
+        # Stream final reply to user
         buffer = ""
         async for content in final_content_stream:
             buffer += content
@@ -127,22 +126,11 @@ async def response(state: State) -> Tuple[dict, State]:
         final_state = state_with_tool_calls.append(chat_history=final_assistant_message)
         yield {"answer": buffer}, final_state
     else:
-        # Normal streaming response handling using ask function
-        buffer = ""
-        # Get the async generator from ask function
-        stream_generator = await llm.ask(
-            state_with_user_message["chat_history"], stream=True
-        )
-
-        # Iterate over the async generator
-        async for content in stream_generator:
-            buffer += content
-            yield {"answer": content}, None
-
-        # Add complete model response to history and finish
-        new_assistant_message = {"role": "assistant", "content": buffer}
+        # No tool calls, just add the complete response to history
+        llm_response_content = "".join(llm_response_chunks)
+        new_assistant_message = {"role": "assistant", "content": llm_response_content}
         final_state = state_with_user_message.append(chat_history=new_assistant_message)
-        yield {"answer": buffer}, final_state
+        yield {"answer": llm_response_content}, final_state
 
 
 def application():
