@@ -1,11 +1,15 @@
-import asyncio
 import traceback
 import os
 from typing import Dict, Any, Optional
-import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
-from mcp.types import Tool, TextContent
+from mcp.types import Tool
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+assert os.getenv("MCP_SERVER_URL"), "MCP_SERVER_URL environment variable not set"
 
 
 class StreamableMCPClient:
@@ -14,7 +18,7 @@ class StreamableMCPClient:
         self.available_tools: list[Tool] = []
         self._session_context = None
         self._transport_context = None
-    
+
     async def connect(self, server_url: str) -> bool:
         try:
             print(f"Connecting to MCP server {server_url}")
@@ -26,10 +30,10 @@ class StreamableMCPClient:
             response = await self.session.list_tools()
             self.available_tools = response.tools
             tool_names = [tool.name for tool in self.available_tools]
-            print(f'Connected successfully! Available tools: {tool_names}')
+            print(f"Connected successfully! Available tools: {tool_names}")
             return True
         except Exception as e:
-            print(f'Connection failed: {e}')
+            print(f"Connection failed: {e}")
             print(traceback.format_exc())
             await self.cleanup()
             return False
@@ -42,8 +46,8 @@ class StreamableMCPClient:
                 "function": {
                     "name": tool.name,
                     "description": tool.description or "",
-                    "parameters": tool.inputSchema
-                }
+                    "parameters": tool.inputSchema,
+                },
             }
             tools.append(tool_dict)
         return tools
@@ -52,15 +56,15 @@ class StreamableMCPClient:
         if not self.session:
             return "Not connected to MCP server"
         try:
-            print(f'Calling tool: {tool_name}')
-            print(f'Parameters: {parameters}')
+            print(f"Calling tool: {tool_name}")
+            print(f"Parameters: {parameters}")
             result = await self.session.call_tool(tool_name, parameters)
-            if hasattr(result, 'content'):
+            if hasattr(result, "content"):
                 content_str = ""
                 for item in result.content:
-                    if hasattr(item, 'text'):
+                    if hasattr(item, "text"):
                         content_str += item.text + ", "
-                content_str = content_str.rstrip(', ')
+                content_str = content_str.rstrip(", ")
             else:
                 content_str = str(result)
             output = content_str or "No output"
@@ -88,7 +92,7 @@ class StreamableMCPClient:
 
 
 async def connect_to_mcp() -> Optional[StreamableMCPClient]:
-    server_url = os.getenv('MCP_SERVER_URL')
+    server_url = os.getenv("MCP_SERVER_URL")
     if not server_url:
         print("MCP_SERVER_URL environment variable not set")
         return None
