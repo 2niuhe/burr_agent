@@ -7,24 +7,24 @@ from burr.core import ApplicationBuilder, State, action
 from utils import llm
 from utils.mcp import StreamableMCPClient, call_mcp_tool
 
-# 导入全局logger
+# Import global logger
 from logger import logger
 
 @action(reads=[], writes=["user_input"])
 def prompt(state: State, user_input: str) -> tuple[dict, State]:
-    """从用户处获取输入。"""
+    """Get input from the user."""
     return {"user_input": user_input}, state.update(user_input=user_input)
 
 
 @action(reads=["user_input", "chat_history"], writes=["chat_history"])
 async def response(state: State) -> tuple[dict, State]:
-    """调用LLM并获取响应，然后更新对话历史。"""
-    # 将用户的最新消息添加到历史记录中
-    # 使用 state.append 方法将新消息追加到聊天历史列表中
+    """Call LLM and get response, then update conversation history."""
+    # Add the user's latest message to the history
+    # Use state.append method to append new message to chat history list
     new_user_message = {"role": "user", "content": state["user_input"]}
     state_with_user_message = state.append(chat_history=new_user_message)
     
-    # 获取MCP工具列表（假设MCP服务器始终可用）
+    # Get MCP tool list (assuming MCP server is always available)
     tools = None
     mcp_client = StreamableMCPClient()
     try:
@@ -32,48 +32,48 @@ async def response(state: State) -> tuple[dict, State]:
         if connected:
             tools = mcp_client.get_tools_for_llm()
     except Exception as e:
-        logger.error(f"获取MCP工具列表时出错: {e}")
+        logger.error(f"Error getting MCP tool list: {e}")
     finally:
         await mcp_client.cleanup()
     
-    # 调用LLM获取响应（传入更新后的聊天历史和工具列表）
-    # 支持工具调用
-    llm_response = await llm.get_llm_response(state_with_user_message["chat_history"], tools)
+    # Call LLM to get response (pass in updated chat history and tool list)
+    # Support tool calls
+    llm_response = await llm.get_llm_response_async(state_with_user_message["chat_history"], tools)
     
-    # 处理工具调用
+    # Handle tool calls
     if llm_response["type"] == "tool_calls":
-        # 处理工具调用并获取结果
+        # Handle tool calls and get results
         new_messages, updated_chat_history = await handle_tool_calls(state_with_user_message["chat_history"], llm_response)
         
-        # 获取最终回复
-        final_response = await llm.get_llm_response(updated_chat_history)
-        answer = final_response.get("content", "抱歉，我没有理解您的问题。")
+        # Get final reply
+        final_response = await llm.get_llm_response_async(updated_chat_history, tools)
+        answer = final_response.get("content", "Sorry, I didn't understand your question.")
     else:
-        answer = llm_response.get("content", "抱歉，我没有理解您的问题。")
+        answer = llm_response.get("content", "Sorry, I didn't understand your question.")
     
-    # 将模型的响应也添加到历史记录中
+    # Also add the model's response to the history
     new_assistant_message = {"role": "assistant", "content": answer}
-    # 使用 state.append 方法将AI的回复追加到聊天历史列表中
+    # Use state.append method to append AI's reply to chat history list
     final_state = state_with_user_message.append(chat_history=new_assistant_message)
     
-    # 返回结果和更新后的状态
+    # Return result and updated state
     result = {"answer": answer}
     return result, final_state
 
 
 async def handle_tool_calls(messages: list, response: dict) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
-    处理工具调用并生成响应消息。
+    Handle tool calls and generate response messages.
 
-    :param messages: 对话历史列表
-    :param response: LLM返回的包含工具调用的响应
-    :return: (新消息列表, 更新后的完整消息历史)
+    :param messages: Conversation history list
+    :param response: LLM's response containing tool calls
+    :return: (New message list, Updated complete message history)
     """
     new_messages = []
     updated_messages = messages.copy()
     
     if response["type"] == "tool_calls":
-        # 添加工具调用到消息历史
+        # Add tool calls to message history
         tool_call_message = {
             "role": "assistant",
             "tool_calls": response["tool_calls"]
@@ -81,21 +81,21 @@ async def handle_tool_calls(messages: list, response: dict) -> tuple[List[Dict[s
         new_messages.append(tool_call_message)
         updated_messages.append(tool_call_message)
         
-        # 执行工具调用
+        # Execute tool calls
         for tool_call in response["tool_calls"]:
             function_name = tool_call["function"]["name"]
             try:
-                # 解析工具参数
+                # Parse tool arguments
                 function_args = json.loads(tool_call["function"]["arguments"])
             except json.JSONDecodeError as e:
-                error_message = f"解析工具参数时出错: {e}"
+                error_message = f"Error parsing tool arguments: {e}"
                 logger.error(error_message)
                 tool_result = error_message
             else:
-                # 调用工具 - 直接使用utils/mcp.py中的函数
+                # Call tool - Use function directly from utils/mcp.py
                 tool_result = await call_mcp_tool(function_name, function_args)
             
-            # 添加工具调用结果到消息历史
+            # Add tool call result to message history
             tool_result_message = {
                 "role": "tool",
                 "tool_call_id": tool_call["id"],
@@ -109,7 +109,7 @@ async def handle_tool_calls(messages: list, response: dict) -> tuple[List[Dict[s
 
 
 def application():
-    """构建Burr应用。"""
+    """Build Burr application."""
     return (
         ApplicationBuilder()
         .with_state(chat_history=[], user_input="")
@@ -128,19 +128,19 @@ def application():
 
 
 async def chat():
-    """运行聊天应用。"""
+    """Run chat application."""
     app = application()
     
-    logger.info("欢迎来到Burr驱动的异步聊天机器人！")
-    logger.info("输入 'exit' 或 'quit' 来结束对话。")
+    logger.info("Welcome to the Burr-driven asynchronous chatbot!")
+    logger.info("Enter 'exit' or 'quit' to end the conversation.")
     
     while True:
-        user_message = input("你: ")
+        user_message = input("You: ")
         if user_message.lower() in ["exit", "quit"]:
-            print("再见!")
+            print("Goodbye!")
             break
             
-        # 运行应用
+        # Run application
         action, result, state = await app.arun(
             halt_after=["response"], 
             inputs={"user_input": user_message}

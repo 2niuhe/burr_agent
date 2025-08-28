@@ -2,101 +2,86 @@ import os
 import dotenv
 import asyncio
 import json
-from typing import List, Dict, Any, Optional
-from openai import AsyncOpenAI
-
-# 导入全局logger
+from typing import List, Dict, Any, Optional, AsyncGenerator, Generator
+from openai import AsyncOpenAI, OpenAI
 from logger import logger
 from utils.mcp import call_mcp_tool
 
 dotenv.load_dotenv()
 
-api_key = os.getenv("DEEPSEEK_API_KEY")
+api_key = os.getenv("LLM_API_KEY")
+base_url = os.getenv("LLM_BASE_URL")
+default_model = os.getenv("LLM_MODEL")
 
-# 初始化异步客户端
-client = AsyncOpenAI(
+assert all([api_key, base_url, default_model]), "LLM API key, base URL, and model must be set"
+
+async_client = AsyncOpenAI(
     api_key=api_key,
-    base_url="https://api.deepseek.com"
+    base_url=base_url
+)
+
+sync_client = OpenAI(
+    api_key=api_key,
+    base_url=base_url
 )
 
 
-
-
-
-async def get_llm_response(messages: list, tools: Optional[List[Dict]] = None) -> Dict[str, Any]:
-    """
-    调用DeepSeek API获取聊天响应，支持工具调用。
-
-    :param messages: 对话历史列表，格式如 [{"role": "user", "content": "..."}]
-    :param tools: 可选的工具列表
-    :return: 模型生成的响应，可能包含工具调用
-    """
+async def get_llm_response_async(messages: list, tools: Optional[List[Dict]] = None, stream: bool = False) -> Dict[str, Any]:
     if not api_key:
-        logger.error("DEEPSEEK_API_KEY 环境变量未设置")
+        logger.error("LLM API key not set. Please set LLM_API_KEY")
         return {
             "type": "error",
-            "content": "错误：DEEPSEEK_API_KEY 环境变量未设置。"
+            "content": "Error: LLM API key not set. Set LLM_API_KEY."
         }
 
     try:
-        logger.info("开始调用DeepSeek API")
+        logger.info("Starting to call LLM API (async)")
         
-        # 准备API调用参数
         api_params = {
-            "model": "deepseek-chat",
+            "model": default_model,
             "messages": messages,
-            "stream": True
+            "stream": False
         }
         
-        # 如果提供了工具定义，则添加到参数中
         if tools:
             api_params["tools"] = tools
-            api_params["tool_choice"] = "auto"  # 自动选择工具
+            api_params["tool_choice"] = "auto"
             
-        response = await client.chat.completions.create(**api_params)
+        response = await async_client.chat.completions.create(**api_params)
 
         full_response = ""
         tool_calls = []
-        
-        async for chunk in response:
-            # 处理工具调用
-            if chunk.choices[0].delta.tool_calls:
-                for tool_call in chunk.choices[0].delta.tool_calls:
-                    if len(tool_calls) <= tool_call.index:
-                        tool_calls.append({
-                            "id": tool_call.id,
-                            "type": "function",
-                            "function": {"name": "", "arguments": ""}
-                        })
-                    
-                    if tool_call.function:
-                        if tool_call.function.name:
-                            tool_calls[tool_call.index]["function"]["name"] = tool_call.function.name
-                        if tool_call.function.arguments:
-                            tool_calls[tool_call.index]["function"]["arguments"] += tool_call.function.arguments
-            # 处理普通文本响应
-            elif chunk.choices[0].delta.content is not None:
-                content = chunk.choices[0].delta.content
-                full_response += content
-                # print(content, end="", flush=True)
-                
-        print()  # 在结尾添加换行
-        logger.info("成功获取API响应")
-        
-        # 如果有工具调用，返回工具调用信息
+
+        choice = response.choices[0]
+
+        if hasattr(choice, 'message') and hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
+            for tool_call in choice.message.tool_calls:
+                tool_calls.append({
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_call.function.name,
+                        "arguments": tool_call.function.arguments
+                    }
+                })
+        elif hasattr(choice, 'message') and hasattr(choice.message, 'content'):
+            full_response = choice.message.content or ""
+
+        print()
+        logger.info("Successfully obtained API response")
+
         if tool_calls:
             return {
                 "type": "tool_calls",
                 "tool_calls": tool_calls
             }
-        
-        # 否则返回文本响应
+
         return {
             "type": "text",
             "content": full_response
         }
     except Exception as e:
-        error_message = f"调用API时出错: {e}"
+        error_message = f"Error calling API: {e}"
         logger.error(error_message)
         print(error_message)
         return {
@@ -105,20 +90,147 @@ async def get_llm_response(messages: list, tools: Optional[List[Dict]] = None) -
         }
 
 
+async def get_llm_response_async_streaming(messages: list, tools: Optional[List[Dict]] = None) -> AsyncGenerator[str, None]:
+    if not api_key:
+        logger.error("LLM API key not set. Please set LLM_API_KEY")
+        yield "Error: LLM API key not set. Set LLM_API_KEY."
+        return
+
+    try:
+        logger.info("Starting to call LLM API (async streaming)")
+        
+        api_params = {
+            "model": default_model,
+            "messages": messages,
+            "stream": True
+        }
+        
+        if tools:
+            api_params["tools"] = tools
+            api_params["tool_choice"] = "auto"
+            
+        response = await async_client.chat.completions.create(**api_params)
+
+        async for chunk in response:
+            if chunk.choices[0].delta.content is not None:
+                yield chunk.choices[0].delta.content
+                
+        logger.info("Successfully obtained streaming API response")
+    except Exception as e:
+        error_message = f"Error calling API: {e}"
+        logger.error(error_message)
+        yield error_message
+
+
+def get_llm_response_sync(messages: list, tools: Optional[List[Dict]] = None, stream: bool = False) -> Dict[str, Any]:
+    if not api_key:
+        logger.error("LLM API key not set. Please set LLM_API_KEY")
+        return {
+            "type": "error",
+            "content": "Error: LLM API key not set. Set LLM_API_KEY."
+        }
+
+    try:
+        logger.info("Starting to call LLM API (sync)")
+        
+        api_params = {
+            "model": default_model,
+            "messages": messages,
+            "stream": False
+        }
+        
+        if tools:
+            api_params["tools"] = tools
+            api_params["tool_choice"] = "auto"
+            
+        response = sync_client.chat.completions.create(**api_params)
+
+        full_response = ""
+        tool_calls = []
+        
+        choice = response.choices[0]
+        
+        if hasattr(choice, 'message') and hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
+            for tool_call in choice.message.tool_calls:
+                tool_calls.append({
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_call.function.name,
+                        "arguments": tool_call.function.arguments
+                    }
+                })
+        elif hasattr(choice, 'message') and hasattr(choice.message, 'content'):
+            full_response = choice.message.content or ""
+                
+        print()
+        logger.info("Successfully obtained API response")
+        
+        if tool_calls:
+            return {
+                "type": "tool_calls",
+                "tool_calls": tool_calls
+            }
+        
+        return {
+            "type": "text",
+            "content": full_response
+        }
+    except Exception as e:
+        error_message = f"Error calling API: {e}"
+        logger.error(error_message)
+        print(error_message)
+        return {
+            "type": "error",
+            "content": error_message
+        }
+
+
+def get_llm_response_sync_streaming(messages: list, tools: Optional[List[Dict]] = None) -> Generator[str, None, None]:
+    if not api_key:
+        logger.error("LLM API key not set. Please set LLM_API_KEY")
+        yield "Error: LLM API key not set. Set LLM_API_KEY."
+        return
+
+    try:
+        logger.info("Starting to call LLM API (sync streaming)")
+        
+        api_params = {
+            "model": default_model,
+            "messages": messages,
+            "stream": True
+        }
+        
+        if tools:
+            api_params["tools"] = tools
+            api_params["tool_choice"] = "auto"
+            
+        response = sync_client.chat.completions.create(**api_params)
+
+        for chunk in response:
+            if chunk.choices[0].delta.content is not None:
+                yield chunk.choices[0].delta.content
+                
+        logger.info("Successfully obtained streaming API response")
+    except Exception as e:
+        error_message = f"Error calling API: {e}"
+        logger.error(error_message)
+        yield error_message
+
 
 if __name__ == '__main__':
-    # 这是一个示例，展示如何直接运行此模块
+    # This is an example showing how to run this module directly
     async def test():
         example_messages = [
             {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "你好，请介绍一下自己。"},
+            {"role": "user", "content": "Hello, please introduce yourself."},
         ]
-        response = await get_llm_response(example_messages)
-        print(f"响应类型: {response['type']}")
+        response = await get_llm_response_async(example_messages)
+        print(f"Response type: {response['type']}")
         if response['type'] == 'text':
-            print(f"响应内容: {response['content']}")
+            print(f"Response content: {response['content']}")
         elif response['type'] == 'tool_calls':
-            print("工具调用:")
+            print("Tool calls:")
             for tool_call in response['tool_calls']:
                 print(f"  - {tool_call['function']['name']}")
 
