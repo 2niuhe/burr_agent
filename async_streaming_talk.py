@@ -33,7 +33,7 @@ async def response(state: State) -> Tuple[dict, State]:
     tools = mcp_tools
 
     # Add debug information
-    logger.info(f"MCP tools available: {tools}")
+    logger.debug(f"MCP tools available: {tools}")
 
     # Add system message explaining tool usage
     tool_names = [tool["function"]["name"] for tool in tools]
@@ -45,10 +45,39 @@ async def response(state: State) -> Tuple[dict, State]:
         chat_history=system_message
     )
 
-    # First use ask to check if tool calls are needed
-    llm_response = await llm.ask(
-        state_with_user_message["chat_history"], stream=False, tools=tools
+    # First use ask to check if tool calls are needed (now with streaming)
+    llm_response_stream = await llm.ask(
+        state_with_user_message["chat_history"], stream=True, tools=tools
     )
+    
+    # Collect all chunks from the stream to reconstruct the full response
+    llm_response_chunks = []
+    tool_calls_detected = False
+    
+    async for chunk in llm_response_stream:
+        logger.info(f"Chunk: {chunk}")
+        if isinstance(chunk, dict) and chunk.get("type") == "tool_call":
+            tool_calls_detected = True
+            # If we detect tool calls, we can break early as we only need to know if tools are called
+            break
+        elif isinstance(chunk, str):
+            llm_response_chunks.append(chunk)
+    
+    # Reconstruct the full response if no tool calls were detected
+    if not tool_calls_detected:
+        llm_response_content = "".join(llm_response_chunks)
+        # Create a mock response object to match the expected structure
+        from openai.types.chat import ChatCompletionMessage
+        llm_response = ChatCompletionMessage(
+            content=llm_response_content,
+            role="assistant",
+            tool_calls=None
+        )
+    else:
+        # If tool calls were detected, we need to get the full response with tool calls
+        llm_response = await llm.ask(
+            state_with_user_message["chat_history"], stream=False, tools=tools
+        )
 
     # Handle tool calls
     if llm_response.tool_calls:
@@ -82,19 +111,21 @@ async def response(state: State) -> Tuple[dict, State]:
                 chat_history=tool_result_message
             )
 
-        # Get final reply using ask function (non-streaming for tool-based responses)
-        final_content = await llm.ask(
-            state_with_tool_calls["chat_history"], stream=False
+        # Get final reply using ask function (streaming for tool-based responses)
+        final_content_stream = await llm.ask(
+            state_with_tool_calls["chat_history"], stream=True
         )
 
         # Stream output final reply (as chunks) to caller
-        for char in final_content:
-            yield {"answer": char}, None
+        buffer = ""
+        async for content in final_content_stream:
+            buffer += content
+            yield {"answer": content}, None
 
         # Add final reply to history and finish
-        final_assistant_message = {"role": "assistant", "content": final_content}
+        final_assistant_message = {"role": "assistant", "content": buffer}
         final_state = state_with_tool_calls.append(chat_history=final_assistant_message)
-        yield {"answer": final_content}, final_state
+        yield {"answer": buffer}, final_state
     else:
         # Normal streaming response handling using ask function
         buffer = ""

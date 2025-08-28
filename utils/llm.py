@@ -49,8 +49,6 @@ async def ask(
             - For content: yields string chunks
             - For tools: yields dict with tool call information
     """
-    if not api_key:
-        raise ValueError("LLM API key not set. Please set LLM_API_KEY")
 
     # Combine system messages with user messages
     all_messages = []
