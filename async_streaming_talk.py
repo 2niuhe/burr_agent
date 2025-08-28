@@ -45,9 +45,9 @@ async def response(state: State) -> Tuple[dict, State]:
         chat_history=system_message
     )
 
-    # First use ask_tool to check if tool calls are needed
-    llm_response = await llm.ask_tool(
-        state_with_user_message["chat_history"], tools=tools
+    # First use ask to check if tool calls are needed
+    llm_response = await llm.ask(
+        state_with_user_message["chat_history"], stream=False, tools=tools
     )
 
     # Handle tool calls

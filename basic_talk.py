@@ -37,10 +37,10 @@ async def response(state: State) -> tuple[dict, State]:
     finally:
         await mcp_client.cleanup()
 
-    # Call LLM to get response using the new ask_tool function
+    # Call LLM to get response using the new ask function
     # Support tool calls
-    llm_response = await llm.ask_tool(
-        state_with_user_message["chat_history"], tools=tools
+    llm_response = await llm.ask(
+        state_with_user_message["chat_history"], stream=False, tools=tools
     )
 
     # Handle tool calls
