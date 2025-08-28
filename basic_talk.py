@@ -19,31 +19,22 @@ def prompt(state: State, user_input: str) -> tuple[dict, State]:
 @action(reads=["user_input", "chat_history"], writes=["chat_history"])
 async def response(state: State) -> tuple[dict, State]:
     """调用LLM并获取响应，然后更新对话历史。"""
-    # 检查API密钥
-    if not os.getenv("DEEPSEEK_API_KEY"):
-        error_msg = "错误：DEEPSEEK_API_KEY 环境变量未设置。请设置您的API密钥。"
-        result = {"answer": error_msg}
-        # 注意：这里不再直接修改 chat_history，而是通过 update 方法返回新状态
-        return result, state.update(chat_history=state["chat_history"])
-    
     # 将用户的最新消息添加到历史记录中
     # 使用 state.append 方法将新消息追加到聊天历史列表中
     new_user_message = {"role": "user", "content": state["user_input"]}
     state_with_user_message = state.append(chat_history=new_user_message)
     
-    # 获取MCP工具列表
+    # 获取MCP工具列表（假设MCP服务器始终可用）
     tools = None
-    mcp_server_url = os.getenv("MCP_SERVER_URL")
-    if mcp_server_url:
-        mcp_client = StreamableMCPClient()
-        try:
-            connected = await mcp_client.connect(mcp_server_url)
-            if connected:
-                tools = mcp_client.get_tools_for_llm()
-        except Exception as e:
-            logger.error(f"获取MCP工具列表时出错: {e}")
-        finally:
-            await mcp_client.cleanup()
+    mcp_client = StreamableMCPClient()
+    try:
+        connected = await mcp_client.connect(os.getenv("MCP_SERVER_URL"))
+        if connected:
+            tools = mcp_client.get_tools_for_llm()
+    except Exception as e:
+        logger.error(f"获取MCP工具列表时出错: {e}")
+    finally:
+        await mcp_client.cleanup()
     
     # 调用LLM获取响应（传入更新后的聊天历史和工具列表）
     # 支持工具调用
