@@ -4,11 +4,11 @@ from typing import Tuple
 
 from burr.core import ApplicationBuilder, State, action
 from burr.core.action import streaming_action
-from utils.mcp import connect_to_mcp, StreamableMCPClient
-from utils import llm
 
 # Import global logger
 from logger import logger
+from utils import llm
+from utils.mcp import StreamableMCPClient, connect_to_mcp
 
 # Global MCP client and tool list
 mcp_client: StreamableMCPClient

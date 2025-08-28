@@ -1,8 +1,11 @@
 import os
+from collections.abc import AsyncGenerator
+from typing import Any, List, Optional, Union
+
 import dotenv
-from typing import List, Any, Optional, Union, AsyncGenerator
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessage
+
 from logger import logger
 
 dotenv.load_dotenv()

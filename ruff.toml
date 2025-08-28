@@ -1,0 +1,40 @@
+# Ruff configuration file
+# See: https://docs.astral.sh/ruff/configuration/
+
+# Exclude directories and files from linting
+exclude = [
+    "burr_src_code_for_llm_read/",
+    "__pycache__/",
+    ".git/",
+    ".venv/",
+    ".ruff_cache/",
+    ".pytest_cache/",
+    "build/",
+    "dist/",
+]
+
+# Target Python version
+target-version = "py39"
+
+# Line length
+line-length = 88
+
+[lint]
+# Enable specific rules
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+
+# Ignore specific rules
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+]
+
+# Respect existing line endings
