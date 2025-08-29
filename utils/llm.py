@@ -6,6 +6,8 @@ import dotenv
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessage
 
+from pydantic import BaseModel
+
 from logger import logger
 
 dotenv.load_dotenv()
@@ -20,6 +22,28 @@ assert all([api_key, base_url, default_model]), (
 
 async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
+
+class Function(BaseModel):
+    name: str = None
+    arguments: Optional[str] = None
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "arguments": self.arguments or '{}'
+        }
+
+class ToolCall(BaseModel):
+    id: str
+    type: str = "function"
+    function: Function
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "type": self.type,
+            "function": self.function.to_dict()
+        }
 
 async def ask(
     messages: List[Union[dict, Any]],
@@ -82,7 +106,7 @@ async def ask(
             if tools:
                 # Handle streaming with tools
                 async def stream_tools_generator():
-                    final_tool_calls = {}
+                    toolcall_buffer: Dict[str, ToolCall] = {}
                     
                     async for chunk in response:
                         # Handle content streaming
@@ -93,21 +117,34 @@ async def ask(
                         for tool_call in chunk.choices[0].delta.tool_calls or []:
                             index = tool_call.index
                             
-                            if index not in final_tool_calls:
-                                final_tool_calls[index] = tool_call
+                            if index not in toolcall_buffer:
+                                toolcall_buffer[index] = tool_call
                             else:
                                 # Merge tool call information
                                 if tool_call.function.arguments:
-                                    final_tool_calls[index].function.arguments += tool_call.function.arguments
+                                    if toolcall_buffer[index].function.arguments is None:
+                                        toolcall_buffer[index].function.arguments = ""
+                                    toolcall_buffer[index].function.arguments += tool_call.function.arguments
                                 if tool_call.function.name:
-                                    final_tool_calls[index].function.name = tool_call.function.name
+                                    toolcall_buffer[index].function.name = tool_call.function.name
                                 if tool_call.id:
-                                    final_tool_calls[index].id = tool_call.id
+                                    toolcall_buffer[index].id = tool_call.id
                             
-                            # Yield tool call information
+                    else:
+                        if toolcall_buffer:
+                            tool_calls: List[ToolCall] = []
+                            for chunk_toolcall in toolcall_buffer.values():
+                                tool_calls.append(ToolCall(
+                                    id=chunk_toolcall.id,
+                                    type=chunk_toolcall.type,
+                                    function=Function(
+                                        name=chunk_toolcall.function.name,
+                                        arguments=chunk_toolcall.function.arguments
+                                    )
+                                ))
                             yield {
                                 "type": "tool_call",
-                                "tool_calls": list(final_tool_calls.values())
+                                "tool_calls": tool_calls
                             }
 
                 logger.info("Successfully obtained streaming API response with tools")

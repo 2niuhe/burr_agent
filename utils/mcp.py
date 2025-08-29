@@ -7,6 +7,8 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool
 
+from logger import logger
+
 load_dotenv()
 
 assert os.getenv("MCP_SERVER_URL"), "MCP_SERVER_URL environment variable not set"
@@ -68,7 +70,7 @@ class StreamableMCPClient:
             else:
                 content_str = str(result)
             output = content_str or "No output"
-            print(f"Tool result: {output}")
+            logger.info(f"Tool result: {output}")
             return output
         except Exception as e:
             error_msg = f"Tool execution failed: {e}"
