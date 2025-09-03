@@ -15,9 +15,10 @@ assert os.getenv("MCP_SERVER_URL"), "MCP_SERVER_URL environment variable not set
 
 
 class StreamableMCPClient:
-    def __init__(self):
+    def __init__(self, disabled_tool_names: list[str] = []):
         self.session: Optional[ClientSession] = None
         self.available_tools: list[Tool] = []
+        self.disabled_tools: list[str] = disabled_tool_names
         self._session_context = None
         self._transport_context = None
 
@@ -30,7 +31,7 @@ class StreamableMCPClient:
             self.session = await self._session_context.__aenter__()
             await self.session.initialize()
             response = await self.session.list_tools()
-            self.available_tools = response.tools
+            self.available_tools = [tool for tool in response.tools if tool.name not in self.disabled_tools]
             tool_names = [tool.name for tool in self.available_tools]
             print(f"Connected successfully! Available tools: {tool_names}")
             return True
