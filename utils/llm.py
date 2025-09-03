@@ -86,6 +86,7 @@ async def ask(
         api_params = {
             "model": default_model,
             "messages": all_messages,
+            "tool_choice": "none",
             "stream": stream,
         }
 
