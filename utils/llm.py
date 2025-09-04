@@ -6,9 +6,8 @@ import dotenv
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessage
 
-from pydantic import BaseModel
-
 from logger import logger
+from utils.schema import ToolCall, Function
 
 dotenv.load_dotenv()
 
@@ -22,28 +21,6 @@ assert all([api_key, base_url, default_model]), (
 
 async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
-
-class Function(BaseModel):
-    name: str = None
-    arguments: Optional[str] = None
-
-    def to_dict(self):
-        return {
-            "name": self.name,
-            "arguments": self.arguments or '{}'
-        }
-
-class ToolCall(BaseModel):
-    id: str
-    type: str = "function"
-    function: Function
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "type": self.type,
-            "function": self.function.to_dict()
-        }
 
 async def ask(
     messages: List[Union[dict, Any]],

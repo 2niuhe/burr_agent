@@ -94,8 +94,9 @@ class StreamableMCPClient:
             print(traceback.format_exc())
 
 
-async def connect_to_mcp() -> Optional[StreamableMCPClient]:
-    server_url = os.getenv("MCP_SERVER_URL")
+async def connect_to_mcp(server_url: str = None) -> Optional[StreamableMCPClient]:
+    if server_url is None:
+        server_url = os.getenv("MCP_SERVER_URL")
     if not server_url:
         print("MCP_SERVER_URL environment variable not set")
         return None

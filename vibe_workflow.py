@@ -14,7 +14,7 @@ from logger import logger
 from utils import llm
 # This will fail if the file doesn't exist, but the design doc assumes it.
 # I'll add a placeholder if it causes issues.
-from utils.llm import ToolCall
+from utils.schema import ToolCall
 from utils.mcp import StreamableMCPClient, connect_to_mcp
 
 # Global MCP client and tool list
