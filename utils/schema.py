@@ -52,6 +52,9 @@ TOOL_CHOICE_VALUES = tuple(choice.value for choice in ToolChoice)
 TOOL_CHOICE_TYPE = Literal[TOOL_CHOICE_VALUES]  # type: ignore
 
 
+class ActionStreamMessage(BaseModel):
+    answer: str
+    role: ROLE_TYPE = Field(default=Role.ASSISTANT)
 
 class Message(BaseModel):
     """Represents a chat message in the conversation"""
