@@ -5,7 +5,7 @@ import json
 import re
 from typing import List, Literal, Optional, Dict, Any, Tuple
 
-from burr.core import ApplicationBuilder, State, action, when
+from burr.core import ApplicationBuilder, State, action, when, expr
 from burr.core.action import streaming_action
 from burr.integrations.pydantic import PydanticTypingSystem
 from pydantic import BaseModel, Field
@@ -21,16 +21,16 @@ from utils.mcp import StreamableMCPClient, connect_to_mcp
 mcp_client: StreamableMCPClient
 mcp_tools: list
 
+class VibeStepMetadata(BaseModel):
+    name: str = Field(description="The short name of the step.")
+    goal: str = Field(description="What this step aims to achieve.")
+    hint: str = Field(description="Instructions on how to accomplish this step.")
 
 # 1. State Models from V4 Design
-class VibeStep(BaseModel):
+class VibeStep(VibeStepMetadata):
     """Defines a sub-task with its own memory (Sub-Agent)."""
     step_id: int
-    description: str
     chat_history: List[Dict[str, Any]] = Field(default_factory=list, description="Independent chat/execution history for this sub-task.")
-    tool_calls: Optional[List[Dict]] = Field(default=None)
-    tool_results: Optional[List[Dict]] = Field(default=None)
-    analysis: Optional[str] = Field(default=None, description="Analysis of the final result of the sub-task.")
     status: Literal["pending", "in_progress", "completed", "failed"] = "pending"
 
 
@@ -46,18 +46,48 @@ class ApplicationState(BaseModel):
     
     # Mode and flow control
     user_input: str = ""
-    workflow_mode: Literal["chat", "ops", "vibe"] = "chat"
+    workflow_mode: Literal["chat", "vibe"] = "chat"
     execution_mode: Literal["interactive", "yolo"] = "interactive"
     exit_chat: bool = False
     
     # Tool execution state
     pending_tool_calls: List[ToolCall] = Field(default_factory=list)
-    tool_execution_needed: bool = False
     tool_execution_allowed: bool = False
 
 
+def get_planner():
+    steps = []
+
+    custom_steps = [
+        {
+            "name": "计算",
+            "goal": "计算1+1",
+            "hint": "使用计算器计算1+1"
+        },
+        {
+            "name": "计算",
+            "goal": "计算1+1",
+            "hint": "使用计算器计算1+1"
+        },
+        {
+            "name": "总结",
+            "goal": "总结以上计算结果",
+            "hint": "输出总结的结果"
+        }
+    ]
+
+    for idx, step in enumerate(custom_steps):
+        steps.append(VibeStep(
+            step_id=idx,
+            name=step["name"],
+            goal=step["goal"],
+            hint=step["hint"]
+        ))
+
+    return steps
+
 # 2. Actions
-@action.pydantic(reads=[], writes=["user_input", "exit_chat", "execution_mode"])
+@action.pydantic(reads=["chat_history"], writes=["user_input", "exit_chat"])
 def prompt(state: ApplicationState) -> ApplicationState:
     """Get input from the user and handle internal commands."""
     user_input = input("You: ")
@@ -66,34 +96,8 @@ def prompt(state: ApplicationState) -> ApplicationState:
         state.exit_chat = True
         return state
 
-    # Command handling
-    mode_match = re.match(r"/mode\s+(interactive|yolo)", user_input.lower())
-    if mode_match:
-        new_mode = mode_match.group(1)
-        state.execution_mode = new_mode
-        print(f"Execution mode switched to: {new_mode}")
-        # After switching mode, we immediately ask for new input
-        # by clearing the user_input and letting the graph loop back to prompt.
-        state.user_input = ""
-    else:
-        state.user_input = user_input
+    state.user_input = user_input
     
-    return state
-
-
-@action.pydantic(reads=["user_input"], writes=["workflow_mode", "current_goal", "chat_history"])
-def router(state: ApplicationState) -> ApplicationState:
-    """Analyzes user intent to decide the workflow."""
-    # A simple router. If input is not empty, we assume it's a "vibe" goal.
-    # A more sophisticated router could use an LLM call for intent analysis.
-    if state.user_input:
-        # Treat all substantive input as a goal for the vibe workflow.
-        state.workflow_mode = "vibe"
-        state.current_goal = state.user_input
-        state.chat_history.append({"role": "user", "content": state.user_input})
-    else:
-        # If input was just a command, loop back to prompt.
-        state.workflow_mode = "chat" # Fallback to chat, which will just loop to prompt
     return state
 
 
@@ -199,7 +203,7 @@ async def exit_chat(state: ApplicationState) -> Tuple[dict, Optional[Application
 
 @streaming_action.pydantic(
     reads=["vibe_plan", "current_goal", "active_step_id"],
-    writes=["active_step_id", "pending_tool_calls", "tool_execution_needed", "vibe_plan", "current_goal"],
+    writes=["active_step_id", "pending_tool_calls", "vibe_plan", "current_goal"],
     state_input_type=ApplicationState,
     state_output_type=ApplicationState,
     stream_type=dict,
@@ -218,7 +222,6 @@ async def vibe_step_executor(state: ApplicationState) -> Tuple[dict, Optional[Ap
     # 2. If no pending steps, the plan is complete
     if next_step is None:
         logger.info("Vibe plan complete.")
-        state.tool_execution_needed = False
         state.current_goal = "" # Clear goal
         state.vibe_plan = [] # Clear plan
         completion_message = "All steps completed!"
@@ -234,9 +237,7 @@ async def vibe_step_executor(state: ApplicationState) -> Tuple[dict, Optional[Ap
     previous_results = ""
     for i, completed_step in enumerate(state.vibe_plan):
         if completed_step.status == "completed" and i < next_step.step_id:
-            if completed_step.analysis:
-                previous_results += f"Step {i + 1} result: {completed_step.analysis}\n"
-            elif completed_step.chat_history:
+            if completed_step.chat_history:
                 # Extract tool results from chat history
                 for msg in completed_step.chat_history:
                     if msg.get("role") == "tool" and msg.get("content"):
@@ -272,12 +273,10 @@ async def vibe_step_executor(state: ApplicationState) -> Tuple[dict, Optional[Ap
     if tool_calls:
         logger.info(f"Tool calls generated for step {next_step.step_id}: {tool_calls}")
         state.pending_tool_calls = tool_calls
-        state.tool_execution_needed = True
     else:
         # If no tool calls, something went wrong or the step is trivial
         logger.warning(f"No tool calls generated for step {next_step.step_id}")
         next_step.status = "failed"
-        state.tool_execution_needed = False
 
     yield {}, state
 
@@ -295,13 +294,12 @@ def human_confirm(state: ApplicationState) -> ApplicationState:
         # If user denies, we mark the step as failed
         active_step = state.vibe_plan[state.active_step_id]
         active_step.status = "failed"
-        active_step.analysis = "User denied tool execution."
     return state
 
 
 @streaming_action.pydantic(
-    reads=['chat_history', 'tool_execution_allowed', 'pending_tool_calls', 'active_step_id', 'vibe_plan', 'tool_execution_needed'],
-    writes=['chat_history', 'tool_execution_allowed', 'pending_tool_calls', 'vibe_plan', 'tool_execution_needed'],
+    reads=['chat_history', 'tool_execution_allowed', 'pending_tool_calls', 'active_step_id', 'vibe_plan'],
+    writes=['chat_history', 'tool_execution_allowed', 'pending_tool_calls', 'vibe_plan'],
     state_input_type=ApplicationState,
     state_output_type=ApplicationState,
     stream_type=dict
@@ -352,27 +350,12 @@ async def execute_tools(state: ApplicationState) -> Tuple[dict, Optional[Applica
                 "content": error_content,
             })
 
-    # Mark the step as completed and analyze results
+    # Mark the step as completed
     active_step.status = "completed"
-    
-    # Extract and summarize the results for future steps
-    tool_results_summary = []
-    for msg in active_step.chat_history:
-        if msg.get("role") == "tool" and msg.get("content"):
-            tool_name = msg.get("name", "unknown")
-            content = str(msg.get("content", ""))
-            # Keep it concise but informative
-            if len(content) > 100:
-                content = content[:100] + "..."
-            tool_results_summary.append(f"{tool_name}: {content}")
-    
-    if tool_results_summary:
-        active_step.analysis = "; ".join(tool_results_summary)
     
     # Clear pending calls
     state.pending_tool_calls = []
     state.tool_execution_allowed = False
-    state.tool_execution_needed = False
     yield {}, state
 
 
@@ -394,23 +377,20 @@ def application():
         )
         .with_transitions(
             # Entry and exit
-            ("prompt", "router", when(exit_chat=False)),
+            ("prompt", "vibe_planner", when(exit_chat=False, workflow_mode="vibe")),
             ("prompt", "exit_chat", when(exit_chat=True)),
             
             # Routing to Vibe or Chat
-            ("router", "vibe_planner", when(workflow_mode="vibe")),
-            ("router", "prompt", when(workflow_mode="chat")), # Chat mode just loops back
-            
-            # Vibe Workflow Core Loop
             ("vibe_planner", "vibe_step_executor"),
-            ("vibe_step_executor", "human_confirm", when(tool_execution_needed=True, execution_mode="interactive")),
-            ("vibe_step_executor", "execute_tools", when(tool_execution_needed=True, execution_mode="yolo")),
-            ("vibe_step_executor", "prompt", when(tool_execution_needed=False)), # Plan is complete or failed
+            ("vibe_step_executor", "prompt", expr("len(pending_tool_calls) == 0")), # Plan is complete or failed
+
+            # Vibe Workflow Core Loop
+            ("vibe_step_executor", "human_confirm", ~when(pending_tool_calls=[]) & when(execution_mode="interactive")),
+            ("vibe_step_executor", "execute_tools", ~when(pending_tool_calls=[]) & when(execution_mode="yolo")),
+            ("vibe_step_executor", "prompt", when(pending_tool_calls=[])), 
 
             ("human_confirm", "execute_tools", when(tool_execution_allowed=True)),
-            ("human_confirm", "prompt", when(tool_execution_allowed=False)), # User denied, TODO: should go to summarizer
-
-            # After executing tools, go back to vibe_step_executor to continue with next step
+            ("human_confirm", "prompt", when(tool_execution_allowed=False)),
             ("execute_tools", "vibe_step_executor"),
         )
         .with_entrypoint("prompt")

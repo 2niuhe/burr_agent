@@ -31,7 +31,7 @@ class StreamableMCPClient:
             self.session = await self._session_context.__aenter__()
             await self.session.initialize()
             response = await self.session.list_tools()
-            self.available_tools = [tool for tool in response.tools if tool.name not in self.disabled_tools]
+            self.available_tools = response.tools
             tool_names = [tool.name for tool in self.available_tools]
             print(f"Connected successfully! Available tools: {tool_names}")
             return True
@@ -44,6 +44,8 @@ class StreamableMCPClient:
     def get_tools_for_llm(self) -> list[dict]:
         tools = []
         for tool in self.available_tools:
+            if tool.name in self.disabled_tools:
+                continue
             tool_dict = {
                 "type": "function",
                 "function": {
