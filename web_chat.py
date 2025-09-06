@@ -9,6 +9,17 @@ from nicegui import native, ui
 from graphs.async_talk_with_tool import get_application
 from logger import logger
 
+# TODO:
+# 1. 集成工作流，包括工作流列表、编辑
+# 2. 支持选择工作流
+# 3. 支持yolo模式
+# 4. 支持vibe planner模式
+# 5. 支持配置mcp服务
+# 6. 优化提示词
+# 7. 支持内存压缩
+# 8. memory消息合并
+# 9. 简化代码
+
 
 class ChatInterface:
     def __init__(self):
