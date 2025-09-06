@@ -3,6 +3,7 @@ import json
 import traceback
 from typing import Any, Dict, Optional
 
+import aiohttp
 from dotenv import load_dotenv
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
@@ -25,7 +26,21 @@ class StreamableMCPClient:
 
     async def connect(self, server_url: str) -> bool:
         try:
-            print(f"Connecting to MCP server {server_url}")
+            logger.info(f"Testing server availability at {server_url}")
+            
+            # Simple HTTP health check before attempting MCP connection
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+                try:
+                    async with session.get(server_url) as response:
+                        logger.info(f"Server responded with status: {response.status}")
+                        if response.status >= 400:
+                            logger.warning(f"Server returned error status {response.status}")
+                            return False
+                except aiohttp.ClientError as e:
+                    logger.warning(f"Server health check failed: {e}")
+                    return False
+            
+            print(f"Server is reachable, attempting MCP connection to {server_url}")
             self._transport_context = streamablehttp_client(url=server_url)
             transport = await self._transport_context.__aenter__()
             self._session_context = ClientSession(transport[0], transport[1])
@@ -112,12 +127,16 @@ async def connect_to_mcp(server_url: str = None) -> Optional[StreamableMCPClient
         print("MCP_SERVER_URL environment variable not set")
         return None
     client = StreamableMCPClient()
-    if await client.connect(server_url):
-        return client
-    else:
-        print("Failed to connect to MCP server")
+    try:
+        if await client.connect(server_url):
+            return client
+        else:
+            logger.warning("Failed to connect to MCP server")
+            return None
+    except Exception as e:
+        print(f"Error connecting to MCP server: {e}")
+        print(traceback.format_exc())
         return None
-
 
 async def call_mcp_tool(tool_name: str, parameters: Dict[str, Any]) -> str:
     client = await connect_to_mcp()
