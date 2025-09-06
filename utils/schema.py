@@ -58,6 +58,9 @@ class ActionStreamMessage(BaseModel):
 
     def __getitem__(self, key: str) -> Any:
         return getattr(self, key)
+    
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key, default)
 
 class Message(BaseModel):
     """Represents a chat message in the conversation"""
