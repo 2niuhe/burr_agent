@@ -172,9 +172,7 @@ def main_remote(host: str = "127.0.0.1", port: int = 8008, transport: str = "htt
     """HTTP传输模式入口点"""
     import uvicorn
 
-    logger.info(
-        f"启动Calculator MCP服务器 ({transport.upper()}传输模式) - {host}:{port}"
-    )
+    logger.info(f"启动Calculator MCP服务器 ({transport.upper()}传输模式) - {host}:{port}")
     if transport == "sse":
         app = mcp.sse_app()
     else:

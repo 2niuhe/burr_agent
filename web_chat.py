@@ -354,7 +354,8 @@ class ChatInterface:
 
     def create_ui(self):
         """Create the NiceGUI interface"""
-        ui.add_css(r"""
+        ui.add_css(
+            r"""
             :root {
                 --primary: #2563eb;
                 --primary-light: #3b82f6;
@@ -369,7 +370,7 @@ class ChatInterface:
                 --radius: 12px;
                 --radius-sm: 8px;
             }
-            
+
             /* Chat container */
             .chat-container {
                 height: calc(100vh - 120px);
@@ -378,19 +379,19 @@ class ChatInterface:
                 background: var(--background);
                 scroll-behavior: smooth;
             }
-            
+
             /* Message bubbles */
             .message-bubble {
                 max-width: 75%;
                 margin-bottom: 0.75rem;
                 animation: slideIn 0.2s ease-out;
             }
-            
+
             @keyframes slideIn {
                 from { opacity: 0; transform: translateY(10px); }
                 to { opacity: 1; transform: translateY(0); }
             }
-            
+
             .user-message {
                 background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%) !important;
                 color: white !important;
@@ -398,7 +399,7 @@ class ChatInterface:
                 border-radius: var(--radius) var(--radius) 4px var(--radius) !important;
                 box-shadow: var(--shadow) !important;
             }
-            
+
             .assistant-message {
                 background: var(--surface) !important;
                 border: 1px solid var(--border) !important;
@@ -407,16 +408,16 @@ class ChatInterface:
                 border-radius: var(--radius) var(--radius) var(--radius) 4px !important;
                 box-shadow: var(--shadow) !important;
             }
-            
+
             .message-bubble .q-card__section {
                 padding: 0.75rem 1rem !important;
             }
-            
+
             .message-bubble p {
                 margin: 0 !important;
                 line-height: 1.5;
             }
-            
+
             /* Tool confirmation */
             .tool-confirmation {
                 background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
@@ -426,11 +427,11 @@ class ChatInterface:
                 max-width: 80% !important;
                 margin: 1rem auto !important;
             }
-            
+
             .tool-confirmation .q-card__section {
                 border-radius: var(--radius) !important;
             }
-            
+
             /* Input area */
             .input-container {
                 background: var(--surface);
@@ -438,39 +439,39 @@ class ChatInterface:
                 padding: 1rem;
                 box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
             }
-            
+
             .message-input {
                 background: var(--surface) !important;
                 border: 1px solid var(--border) !important;
                 border-radius: 4px !important;
                 transition: all 0.2s ease;
             }
-            
+
             .message-input:focus-within {
                 border-color: var(--primary) !important;
                 box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
             }
-            
+
             /* Header */
             .app-header {
                 background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%) !important;
                 box-shadow: var(--shadow) !important;
             }
-            
+
             /* Responsive design */
             @media (max-width: 768px) {
                 .message-bubble { max-width: 90%; }
                 .chat-container { padding: 0.5rem; }
                 .input-container { padding: 0.75rem; }
             }
-            
+
             /* Loading states */
             .typing-indicator {
                 display: inline-flex;
                 align-items: center;
                 gap: 4px;
             }
-            
+
             .typing-dot {
                 width: 6px;
                 height: 6px;
@@ -478,15 +479,16 @@ class ChatInterface:
                 background: var(--text-light);
                 animation: typing 1.4s infinite;
             }
-            
+
             .typing-dot:nth-child(2) { animation-delay: 0.2s; }
             .typing-dot:nth-child(3) { animation-delay: 0.4s; }
-            
+
             @keyframes typing {
                 0%, 60%, 100% { opacity: 0.3; }
                 30% { opacity: 1; }
             }
-        """)
+        """
+        )
 
         # App layout setup
         ui.query(".q-page").classes("flex column")

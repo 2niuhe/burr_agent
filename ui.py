@@ -474,9 +474,7 @@ def edit_workflow(index: int):
             desc_input = ui.textarea("工作流描述", value=workflow.description).classes(
                 "w-full"
             )
-            goal_input = ui.input("初始目标", value=workflow.initial_goal).classes(
-                "w-full"
-            )
+            goal_input = ui.input("初始目标", value=workflow.initial_goal).classes("w-full")
 
             # 步骤编辑区域
             ui.label("步骤配置").classes("text-lg font-semibold mt-6")
@@ -656,9 +654,7 @@ def chat_execution_page():
             f"目标: {ui_state.current_workflow.initial_goal}"
         )
         add_chat_message("system", f"已加载工作流: {ui_state.current_workflow.name}")
-        add_chat_message(
-            "system", f"初始目标: {ui_state.current_workflow.initial_goal}"
-        )
+        add_chat_message("system", f"初始目标: {ui_state.current_workflow.initial_goal}")
 
 
 def update_stepper_display():
@@ -713,9 +709,7 @@ def update_status_display(container):
         ui.label(f"工作流模式: {ui_state.app_state.workflow_mode}").classes("mb-1")
         ui.label(f"执行模式: {ui_state.app_state.execution_mode}").classes("mb-1")
         ui.label(f"活动步骤: {ui_state.app_state.active_step_id}").classes("mb-1")
-        ui.label(f"工具执行需要: {ui_state.app_state.tool_execution_needed}").classes(
-            "mb-1"
-        )
+        ui.label(f"工具执行需要: {ui_state.app_state.tool_execution_needed}").classes("mb-1")
 
 
 def add_chat_message(role: str, content: str):

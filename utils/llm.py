@@ -15,9 +15,9 @@ api_key = os.getenv("LLM_API_KEY")
 base_url = os.getenv("LLM_BASE_URL")
 default_model = os.getenv("LLM_MODEL")
 
-assert all([api_key, base_url, default_model]), (
-    "LLM API key, base URL, and model must be set"
-)
+assert all(
+    [api_key, base_url, default_model]
+), "LLM API key, base URL, and model must be set"
 
 async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 

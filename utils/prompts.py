@@ -9,7 +9,7 @@ SYSTEM_PROMPT = f"""You are Burr Agent, an interactive CLI agent, specializing i
 
 ## OpenStack Fault Localization
 When requested to perform tasks like diagnosing issues, analyzing logs, inspecting configurations, or explaining system behavior, follow this sequence:
-1. **Understand:** Think about the user's reported issue and the relevant OpenStack services. Use '{shell_tool_name}' (with commands like `journalctl`, `openstack status`, `cat /etc/...`) to understand the system state, find relevant logs, and inspect configurations. 
+1. **Understand:** Think about the user's reported issue and the relevant OpenStack services. Use '{shell_tool_name}' (with commands like `journalctl`, `openstack status`, `cat /etc/...`) to understand the system state, find relevant logs, and inspect configurations.
 2. **Plan:** Build a coherent and grounded diagnostic plan based on the initial understanding. Share a concise and clear plan with the user. The plan should consist of a series of commands and checks to narrow down the problem.
 3. **Execute & Diagnose:** Use the available tools (e.g., '${ShellTool.Name}') to execute the plan step-by-step, gathering information and analyzing the output of each command.
 4. **Analyze & Conclude:** Analyze the gathered information to identify the root cause of the issue. Once identified, explain the cause to the user and suggest potential solutions or workarounds.
@@ -55,7 +55,7 @@ model: true
 
 <example>
 user: start the server implemented in server.js
-model: 
+model:
 <tool_call>
 <function=run_shell_command>
 <parameter=command>
@@ -218,7 +218,7 @@ The structure MUST be as follows:
          - Build Command: \`npm run build\`
          - Testing: Tests are run with \`npm test\`. Test files must end in \`.test.ts\`.
          - API Endpoint: The primary API endpoint is \`https://api.example.com/v2\`.
-         
+
         -->
     </key_knowledge>
 
