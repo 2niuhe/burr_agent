@@ -57,7 +57,7 @@ build: clean
 ## clean: Clean release file
 clean:
 	@echo " > Cleaning release file"
-	@rm ./dist/* 2> /dev/null
+	@rm  ./dist/* 2> /dev/null || true
 
 ## piptar: Pip build a tar package
 piptar: clean

@@ -485,6 +485,7 @@ if __name__ == "__main__":
         title='Burr Agent Web Chat with Tools',
         port=8080,
         host='0.0.0.0',
+        favicon="🦀",
         show=True,
         reload=False
     )

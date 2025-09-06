@@ -1,8 +1,12 @@
 import logging
+import os
 import sys
+from dotenv import load_dotenv
 
-LOG_LEVEL = logging.ERROR
+load_dotenv()
+LOG_LEVEL = os.getenv("LOG_LEVEL", "ERROR")
 
+print(f"LOG_LEVEL: {LOG_LEVEL}")
 
 # 创建一个全局的日志记录器实例
 def get_logger(name: str = "burr_agent", level: int = LOG_LEVEL) -> logging.Logger:
