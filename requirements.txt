@@ -1,5 +1,5 @@
 -r ui-requirements.txt
-burr[start] >=0.40.2
+burr >=0.40.2
 openai>=1.102.0
 python-dotenv>=0.9.9
 mcp[cli]>=1.13.0

@@ -26,9 +26,6 @@ cmd = [
     "--add-data", f"{project_root / 'graphs'}{os.pathsep}graphs",
     "--add-data", f"{project_root / 'utils'}{os.pathsep}utils",
     "--add-data", f"{project_root / 'logger.py'}{os.pathsep}.",
-    # "--add-data", f"{project_root}{os.pathsep}.",
-    # Add .env file
-    "--add-data", f"{project_root / '.env'}{os.pathsep}.",
     "--exclude-module", "ruff",
     "--exclude-module", "ipython",
     "--exclude-module", "mypy",
