@@ -9,10 +9,8 @@ class Function(BaseModel):
     arguments: Optional[str] = None
 
     def to_dict(self):
-        return {
-            "name": self.name,
-            "arguments": self.arguments or '{}'
-        }
+        return {"name": self.name, "arguments": self.arguments or "{}"}
+
 
 class ToolCall(BaseModel):
     id: str
@@ -20,11 +18,7 @@ class ToolCall(BaseModel):
     function: Function
 
     def to_dict(self):
-        return {
-            "id": self.id,
-            "type": self.type,
-            "function": self.function.to_dict()
-        }
+        return {"id": self.id, "type": self.type, "function": self.function.to_dict()}
 
 
 class Role(str, Enum):
@@ -54,14 +48,17 @@ TOOL_CHOICE_TYPE = Literal[TOOL_CHOICE_VALUES]  # type: ignore
 
 class ActionStreamMessage(BaseModel):
     content: str
-    tool_calls: List[ToolCall] = Field(default_factory=list, description="The tool calls.")
+    tool_calls: List[ToolCall] = Field(
+        default_factory=list, description="The tool calls."
+    )
     role: ROLE_TYPE = Field(default=Role.ASSISTANT)
 
     def __getitem__(self, key: str) -> Any:
         return getattr(self, key)
-    
+
     def get(self, key: str, default: Any = None) -> Any:
         return getattr(self, key, default)
+
 
 class Message(BaseModel):
     """Represents a chat message in the conversation"""
@@ -98,7 +95,9 @@ class Message(BaseModel):
         if self.content is not None:
             message["content"] = self.content
         if self.tool_calls is not None:
-            message["tool_calls"] = [tool_call.to_dict() for tool_call in self.tool_calls]
+            message["tool_calls"] = [
+                tool_call.to_dict() for tool_call in self.tool_calls
+            ]
         if self.name is not None:
             message["name"] = self.name
         if self.tool_call_id is not None:
@@ -106,9 +105,7 @@ class Message(BaseModel):
         return message
 
     @classmethod
-    def user_message(
-        cls, content: str
-    ) -> "Message":
+    def user_message(cls, content: str) -> "Message":
         """Create a user message"""
         return cls(role=Role.USER, content=content)
 
@@ -118,16 +115,12 @@ class Message(BaseModel):
         return cls(role=Role.SYSTEM, content=content)
 
     @classmethod
-    def assistant_message(
-        cls, content: Optional[str] = None
-    ) -> "Message":
+    def assistant_message(cls, content: Optional[str] = None) -> "Message":
         """Create an assistant message"""
         return cls(role=Role.ASSISTANT, content=content)
 
     @classmethod
-    def tool_message(
-        cls, content: str, name, tool_call_id: str
-    ) -> "Message":
+    def tool_message(cls, content: str, name, tool_call_id: str) -> "Message":
         """Create a tool message"""
         return cls(
             role=Role.TOOL,
@@ -165,7 +158,6 @@ class Memory(BaseModel):
     messages: List[Message] = Field(default_factory=list)
     max_messages: int = Field(default=100)
 
-
     def append(self, message: Message) -> None:
         """Add a message to memory"""
         self.messages.append(message)
@@ -191,26 +183,38 @@ class Memory(BaseModel):
     def to_dict_list(self) -> List[dict]:
         """Convert messages to list of dicts"""
         return [msg.to_dict() for msg in self.messages]
-    
+
 
 class VibeStepMetadata(BaseModel):
     name: str = Field(description="The short name of the step.")
     goal: str = Field(description="What this step aims to achieve.")
     hint: str = Field(description="Instructions on how to accomplish this step.")
 
+
 # 1. State Models from V4 Design
 class VibeStep(VibeStepMetadata):
     """Defines a sub-task with its own memory (Sub-Agent)."""
+
     step_id: int
-    chat_history: Memory = Field(default_factory=Memory, description="Independent chat/execution history for this sub-task.")
+    chat_history: Memory = Field(
+        default_factory=Memory,
+        description="Independent chat/execution history for this sub-task.",
+    )
     status: Literal["pending", "in_progress", "completed", "failed"] = "pending"
 
 
 class BasicState(BaseModel):
     """State for the interactive mode."""
-    chat_history: Memory = Field(default_factory=Memory, description="The chat history.")
-    pending_tool_calls: List[ToolCall] = Field(default_factory=list, description="The pending tool calls.")
-    tool_execution_allowed: bool = Field(default=False, description="Whether to allow tool execution.")
+
+    chat_history: Memory = Field(
+        default_factory=Memory, description="The chat history."
+    )
+    pending_tool_calls: List[ToolCall] = Field(
+        default_factory=list, description="The pending tool calls."
+    )
+    tool_execution_allowed: bool = Field(
+        default=False, description="Whether to allow tool execution."
+    )
     exit_chat: bool = Field(default=False, description="Whether to exit the chat.")
     _version: str = "0.0.1"
 
@@ -218,6 +222,7 @@ class BasicState(BaseModel):
     vibe_plan: List[VibeStep] = Field(default_factory=list)
     active_step_id: Optional[int] = None
     current_goal: str = ""
+
 
 class HumanConfirmResult(BaseModel):
     allowed: bool

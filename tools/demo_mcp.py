@@ -5,9 +5,8 @@ Enhanced Calculator MCP服务器
 """
 
 import logging
-import subprocess
 import os
-from typing import Optional
+import subprocess
 
 from mcp.server.fastmcp import FastMCP
 
@@ -58,13 +57,13 @@ def execute_bash_command(command: str, timeout: int = 30) -> dict:
             capture_output=True,
             text=True,
             timeout=timeout,
-            cwd=os.getcwd()
+            cwd=os.getcwd(),
         )
-        
+
         return {
             "stdout": result.stdout,
             "stderr": result.stderr,
-            "returncode": result.returncode
+            "returncode": result.returncode,
         }
     except subprocess.TimeoutExpired:
         logger.error(f"Command timed out: {command}")
@@ -87,7 +86,7 @@ def read_file(file_path: str, encoding: str = "utf-8") -> str:
     """
     try:
         logger.info(f"Reading file: {file_path}")
-        with open(file_path, 'r', encoding=encoding) as file:
+        with open(file_path, encoding=encoding) as file:
             content = file.read()
         return content
     except FileNotFoundError:
@@ -99,7 +98,9 @@ def read_file(file_path: str, encoding: str = "utf-8") -> str:
 
 
 @mcp.tool()
-def write_file(file_path: str, content: str, mode: str = "w", encoding: str = "utf-8") -> bool:
+def write_file(
+    file_path: str, content: str, mode: str = "w", encoding: str = "utf-8"
+) -> bool:
     """Write content to a file(写入内容到文件)
 
     Parameters:
@@ -114,8 +115,11 @@ def write_file(file_path: str, content: str, mode: str = "w", encoding: str = "u
     try:
         logger.info(f"Writing to file: {file_path} with mode: {mode}")
         # Ensure directory exists
-        os.makedirs(os.path.dirname(file_path) if os.path.dirname(file_path) else ".", exist_ok=True)
-        
+        os.makedirs(
+            os.path.dirname(file_path) if os.path.dirname(file_path) else ".",
+            exist_ok=True,
+        )
+
         with open(file_path, mode, encoding=encoding) as file:
             file.write(content)
         return True
@@ -138,24 +142,21 @@ def list_directory(path: str = ".", include_hidden: bool = False) -> dict:
     try:
         logger.info(f"Listing directory: {path}")
         entries = os.listdir(path)
-        
+
         if not include_hidden:
-            entries = [entry for entry in entries if not entry.startswith('.')]
-        
+            entries = [entry for entry in entries if not entry.startswith(".")]
+
         files = []
         directories = []
-        
+
         for entry in entries:
             full_path = os.path.join(path, entry)
             if os.path.isfile(full_path):
                 files.append(entry)
             elif os.path.isdir(full_path):
                 directories.append(entry)
-        
-        return {
-            "files": sorted(files),
-            "directories": sorted(directories)
-        }
+
+        return {"files": sorted(files), "directories": sorted(directories)}
     except Exception as e:
         logger.error(f"Failed to list directory: {e}")
         raise RuntimeError(f"Failed to list directory: {str(e)}")

@@ -1,8 +1,8 @@
 import asyncio
-from burr.core import GraphBuilder, ApplicationBuilder
-from burr.core import when, expr
-from actions import get_user_input, exit_chat, human_confirm, execute_tools, ask_llm
 
+from burr.core import ApplicationBuilder, GraphBuilder, when
+
+from actions import ask_llm, get_user_input
 from utils.schema import Role
 
 # NOTE: with this graph, you can not use tools
@@ -10,26 +10,37 @@ from utils.schema import Role
 system_prompt = """You are a helpful assistant.
 """
 
+
 def graph():
-    return GraphBuilder().with_actions(
-        get_init_input=get_user_input.bind(system_prompt=system_prompt),
-        get_fellow_input=get_user_input,
-        ask_llm=ask_llm
-    ).with_transitions(
-        ("get_init_input", "ask_llm", when(exit_chat=False)),
-        ("get_fellow_input", "ask_llm", when(exit_chat=False)),
-        ("ask_llm", "get_fellow_input", when(exit_chat=False)),
-    ).build()
+    return (
+        GraphBuilder()
+        .with_actions(
+            get_init_input=get_user_input.bind(system_prompt=system_prompt),
+            get_fellow_input=get_user_input,
+            ask_llm=ask_llm,
+        )
+        .with_transitions(
+            ("get_init_input", "ask_llm", when(exit_chat=False)),
+            ("get_fellow_input", "ask_llm", when(exit_chat=False)),
+            ("ask_llm", "get_fellow_input", when(exit_chat=False)),
+        )
+        .build()
+    )
 
 
 def application():
-    return ApplicationBuilder().with_graph(
-        graph()).with_entrypoint("get_init_input").with_tracker("local", project="burr_agent").build()
+    return (
+        ApplicationBuilder()
+        .with_graph(graph())
+        .with_entrypoint("get_init_input")
+        .with_tracker("local", project="burr_agent")
+        .build()
+    )
 
 
 async def chat():
     app = application()
-    
+
     current_role = Role.USER
     while True:
         prompt = input(f"{current_role.value}: ")
@@ -37,13 +48,16 @@ async def chat():
         if prompt.lower() in ["exit", "quit"]:
             break
 
-        action, result_container = await app.astream_result(halt_after=["ask_llm"], inputs={"user_input": prompt})
+        action, result_container = await app.astream_result(
+            halt_after=["ask_llm"], inputs={"user_input": prompt}
+        )
 
         print("AI: ", end="", flush=True)
         async for result in result_container:
             print(result["content"], end="", flush=True)
 
         print()
+
 
 if __name__ == "__main__":
     asyncio.run(chat())

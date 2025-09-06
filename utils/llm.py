@@ -1,13 +1,13 @@
 import os
 from collections.abc import AsyncGenerator
-from typing import Any, List, Optional, Union, Dict
+from typing import Any, Dict, List, Optional, Union
 
 import dotenv
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessage
 
 from logger import logger
-from utils.schema import ToolCall, Function, Message, Memory
+from utils.schema import Function, Memory, Message, ToolCall
 
 dotenv.load_dotenv()
 
@@ -30,7 +30,9 @@ async def ask(
     tools: Optional[List[dict]] = None,
     tool_choice: str = "auto",
     **kwargs,
-) -> Union[str, ChatCompletionMessage, AsyncGenerator[Union[str, Dict[str, Any]], None]]:
+) -> Union[
+    str, ChatCompletionMessage, AsyncGenerator[Union[str, Dict[str, Any]], None]
+]:
     """
     Send a prompt to the LLM and get the response.
 
@@ -90,45 +92,51 @@ async def ask(
                 # Handle streaming with tools
                 async def stream_tools_generator():
                     toolcall_buffer: Dict[str, ToolCall] = {}
-                    
+
                     async for chunk in response:
                         # Handle content streaming
                         if chunk.choices[0].delta.content is not None:
                             yield chunk.choices[0].delta.content
-                        
+
                         # Handle tool calls streaming
                         for tool_call in chunk.choices[0].delta.tool_calls or []:
                             index = tool_call.index
-                            
+
                             if index not in toolcall_buffer:
                                 toolcall_buffer[index] = tool_call
                             else:
                                 # Merge tool call information
                                 if tool_call.function.arguments:
-                                    if toolcall_buffer[index].function.arguments is None:
+                                    if (
+                                        toolcall_buffer[index].function.arguments
+                                        is None
+                                    ):
                                         toolcall_buffer[index].function.arguments = ""
-                                    toolcall_buffer[index].function.arguments += tool_call.function.arguments
+                                    toolcall_buffer[
+                                        index
+                                    ].function.arguments += tool_call.function.arguments
                                 if tool_call.function.name:
-                                    toolcall_buffer[index].function.name = tool_call.function.name
+                                    toolcall_buffer[
+                                        index
+                                    ].function.name = tool_call.function.name
                                 if tool_call.id:
                                     toolcall_buffer[index].id = tool_call.id
-                            
+
                     else:
                         if toolcall_buffer:
                             tool_calls: List[ToolCall] = []
                             for chunk_toolcall in toolcall_buffer.values():
-                                tool_calls.append(ToolCall(
-                                    id=chunk_toolcall.id,
-                                    type=chunk_toolcall.type,
-                                    function=Function(
-                                        name=chunk_toolcall.function.name,
-                                        arguments=chunk_toolcall.function.arguments
+                                tool_calls.append(
+                                    ToolCall(
+                                        id=chunk_toolcall.id,
+                                        type=chunk_toolcall.type,
+                                        function=Function(
+                                            name=chunk_toolcall.function.name,
+                                            arguments=chunk_toolcall.function.arguments,
+                                        ),
                                     )
-                                ))
-                            yield {
-                                "type": "tool_call",
-                                "tool_calls": tool_calls
-                            }
+                                )
+                            yield {"type": "tool_call", "tool_calls": tool_calls}
 
                 logger.info("Successfully obtained streaming API response with tools")
                 return stream_tools_generator()
@@ -145,7 +153,7 @@ async def ask(
             # Use non-streaming response
             response = await async_client.chat.completions.create(**api_params)
             choice = response.choices[0]
-            
+
             if tools:
                 logger.info("Successfully obtained API response with tools")
                 return choice.message
@@ -172,13 +180,13 @@ if __name__ == "__main__":
             # Test non-streaming
             response = await ask(example_messages, stream=False)
             print(f"Non-streaming response: {response}")
-            
+
             # Test streaming
             print("\n--- Streaming response ---")
             stream_gen = await ask(example_messages, stream=True)
             async for chunk in stream_gen:
                 print(f"Streaming chunk: {chunk}")
-                
+
         except Exception as e:
             print(f"Error: {e}")
 

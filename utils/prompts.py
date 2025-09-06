@@ -196,8 +196,7 @@ Your core function is efficient and safe assistance. Balance extreme conciseness
 """
 
 
-
-COMPRESS_MEMORY_PROMPT = """You are the component that summarizes internal chat history into a given structure.
+COMPRESS_MEMORY_PROMPT = r"""You are the component that summarizes internal chat history into a given structure.
 
 When the conversation history grows too large, you will be invoked to distill the entire history into a concise, structured XML snapshot. This snapshot is CRITICAL, as it will become the agent's *only* memory of the past. The agent will resume its work based solely on this snapshot. All crucial details, plans, errors, and user directives MUST be preserved.
 
@@ -252,4 +251,3 @@ The structure MUST be as follows:
         -->
     </current_plan>
 </state_snapshot>"""
-

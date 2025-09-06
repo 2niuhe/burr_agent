@@ -1,8 +1,8 @@
 import asyncio
 import json
-from typing import Tuple, List, Optional
+from typing import List, Optional, Tuple
 
-from burr.core import ApplicationBuilder, State, action, when
+from burr.core import ApplicationBuilder, action, when
 from burr.core.action import streaming_action
 from burr.integrations.pydantic import PydanticTypingSystem
 from pydantic import BaseModel, Field
@@ -35,25 +35,28 @@ def prompt(state: ApplicationState) -> ApplicationState:
         state.exit_chat = True
     else:
         state.user_input = user_input
-    
+
     return state
 
 
-@action.pydantic(reads=['tool_execution_needed', 'pending_tool_calls'], writes=['tool_execution_allowed'])
+@action.pydantic(
+    reads=["tool_execution_needed", "pending_tool_calls"],
+    writes=["tool_execution_allowed"],
+)
 def human_confirm(state: ApplicationState) -> ApplicationState:
     """Ask the user if they want to execute the tool calls."""
 
     user_input = input("Allow tool execution? (y/n): ").strip().lower()
-    state.tool_execution_allowed = user_input in ['y', 'yes']
+    state.tool_execution_allowed = user_input in ["y", "yes"]
     return state
 
 
 @streaming_action.pydantic(
-    reads=["user_input", "chat_history"], 
+    reads=["user_input", "chat_history"],
     writes=["chat_history", "pending_tool_calls", "tool_execution_needed"],
     state_input_type=ApplicationState,
     state_output_type=ApplicationState,
-    stream_type=dict
+    stream_type=dict,
 )
 async def response(state: ApplicationState) -> Tuple[dict, Optional[ApplicationState]]:
     """Async streaming call to LLM, handle tool calls, update conversation history."""
@@ -79,15 +82,13 @@ async def response(state: ApplicationState) -> Tuple[dict, Optional[ApplicationS
     state.chat_history.append(system_message)
 
     # Single LLM call with streaming
-    llm_response_stream = await llm.ask(
-        state.chat_history, stream=True, tools=tools
-    )
-    
+    llm_response_stream = await llm.ask(state.chat_history, stream=True, tools=tools)
+
     # Collect all chunks and detect tool calls
     llm_response_chunks = []
     tool_calls_detected = False
     tool_calls: List[ToolCall] = []
-    
+
     print("AI: ", end="", flush=True)
     async for chunk in llm_response_stream:
         if isinstance(chunk, dict) and chunk.get("type") == "tool_call":
@@ -98,28 +99,34 @@ async def response(state: ApplicationState) -> Tuple[dict, Optional[ApplicationS
             print(chunk, end="", flush=True)
             # Stream content chunks to user
             yield {"answer": chunk}, None
-    
-    state.chat_history.append({"role": "assistant", "content": "".join(llm_response_chunks)})
-    
+
+    state.chat_history.append(
+        {"role": "assistant", "content": "".join(llm_response_chunks)}
+    )
+
     # Handle tool calls if detected
     if tool_calls_detected and tool_calls:
         logger.info(f"Tool calls detected: {tool_calls}")
-        print(f"\nPending Tool Calls:\n {[tool_call.function.to_dict() for tool_call in tool_calls]}")
+        print(
+            f"\nPending Tool Calls:\n {[tool_call.function.to_dict() for tool_call in tool_calls]}"
+        )
         state.pending_tool_calls = tool_calls
         state.tool_execution_needed = True
         yield {}, state
     else:
         yield {}, state
-    
+
 
 @streaming_action.pydantic(
-    reads=['chat_history', 'tool_execution_allowed', 'pending_tool_calls'],
-    writes=['chat_history', 'tool_execution_allowed', 'pending_tool_calls'],
+    reads=["chat_history", "tool_execution_allowed", "pending_tool_calls"],
+    writes=["chat_history", "tool_execution_allowed", "pending_tool_calls"],
     state_input_type=ApplicationState,
     state_output_type=ApplicationState,
-    stream_type=dict
+    stream_type=dict,
 )
-async def execute_tools(state: ApplicationState) -> Tuple[dict, Optional[ApplicationState]]:
+async def execute_tools(
+    state: ApplicationState,
+) -> Tuple[dict, Optional[ApplicationState]]:
     """Execute tool calls and update conversation history."""
 
     global mcp_client
@@ -136,8 +143,8 @@ async def execute_tools(state: ApplicationState) -> Tuple[dict, Optional[Applica
     # Add tool call message to history
     tool_call_message = {
         "role": "assistant",
-        "content": "",    
-        "tool_calls": [tool_call.to_dict() for tool_call in pending_tools_calls]
+        "content": "",
+        "tool_calls": [tool_call.to_dict() for tool_call in pending_tools_calls],
     }
     state.chat_history.append(tool_call_message)
 
@@ -146,7 +153,7 @@ async def execute_tools(state: ApplicationState) -> Tuple[dict, Optional[Applica
             # Extract function name and arguments from ChoiceDeltaToolCall object
             function_name = tool_call.function.name
             function_args = tool_call.function.arguments
-            
+
             # Parse arguments if it's a string
             if isinstance(function_args, str):
                 try:
@@ -174,9 +181,7 @@ async def execute_tools(state: ApplicationState) -> Tuple[dict, Optional[Applica
             logger.exception(f"Tool Call Failed: {e}")
 
     # Get final reply using the same streaming approach
-    final_content_stream = await llm.ask(
-        state.chat_history, stream=True
-    )
+    final_content_stream = await llm.ask(state.chat_history, stream=True)
 
     print("AI: ", end="", flush=True)
 
@@ -195,7 +200,7 @@ async def execute_tools(state: ApplicationState) -> Tuple[dict, Optional[Applica
     yield {"answer": buffer}, state
 
 
-@action.pydantic(reads=['chat_history'], writes=['exit_chat'])
+@action.pydantic(reads=["chat_history"], writes=["exit_chat"])
 def exit_chat(state: ApplicationState) -> ApplicationState:
     """Exit the chat."""
     print(f"Chat History: {state.chat_history}")
@@ -214,7 +219,7 @@ def application():
             response=response,
             human_confirm=human_confirm,
             execute_tools=execute_tools,
-            exit_chat=exit_chat
+            exit_chat=exit_chat,
         )
         .with_transitions(
             ("prompt", "response", when(exit_chat=False)),
@@ -223,7 +228,7 @@ def application():
             ("response", "prompt", when(tool_execution_needed=False)),
             ("human_confirm", "execute_tools", when(tool_execution_allowed=True)),
             ("human_confirm", "prompt", when(tool_execution_allowed=False)),
-            ("execute_tools", "prompt")
+            ("execute_tools", "prompt"),
         )
         .with_entrypoint("prompt")
         .with_tracker("local", project="burr_agent")

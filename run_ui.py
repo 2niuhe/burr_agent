@@ -6,7 +6,9 @@
 import os
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # 确保当前目录在Python路径中
@@ -30,16 +32,12 @@ if __name__ == "__main__":
     print("🔄 工作流管理页面: http://localhost:8080")
     print("💬 对话执行页面: http://localhost:8080/chat")
     print()
-    
+
     try:
         # 导入并运行UI
         from ui import ui
-        ui.run(
-            title="Vibe Workflow UI",
-            port=8080,
-            show=True,
-            reload=False
-        )
+
+        ui.run(title="Vibe Workflow UI", port=8080, show=True, reload=False)
     except KeyboardInterrupt:
         print("\n👋 再见!")
     except Exception as e:

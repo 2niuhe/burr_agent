@@ -1,5 +1,5 @@
-import os
 import json
+import os
 from typing import Any, Dict, Optional
 
 import aiohttp
@@ -26,19 +26,23 @@ class StreamableMCPClient:
     async def connect(self, server_url: str) -> bool:
         try:
             logger.info(f"Testing server availability at {server_url}")
-            
+
             # Simple HTTP health check before attempting MCP connection
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as session:
                 try:
                     async with session.get(server_url) as response:
                         logger.info(f"Server responded with status: {response.status}")
                         if response.status >= 500:
-                            logger.warning(f"Server returned error status {response.status}")
+                            logger.warning(
+                                f"Server returned error status {response.status}"
+                            )
                             return False
                 except aiohttp.ClientError as e:
                     logger.warning(f"Server health check failed: {e}")
                     return False
-            
+
             print(f"Server is reachable, attempting MCP connection to {server_url}")
             self._transport_context = streamablehttp_client(url=server_url)
             transport = await self._transport_context.__aenter__()
@@ -71,15 +75,19 @@ class StreamableMCPClient:
             tools.append(tool_dict)
         return tools
 
-    async def call_tool(self, tool_name: str, parameters: Optional[str|Dict[str, Any]] = None) -> str:
+    async def call_tool(
+        self, tool_name: str, parameters: Optional[str | Dict[str, Any]] = None
+    ) -> str:
         if not self.session:
             return "Not connected to MCP server"
-        
+
         if isinstance(parameters, str):
             try:
                 parameters = json.loads(parameters)
             except json.JSONDecodeError:
-                logger.warning(f"Failed to parse tool arguments: {parameters}, using empty dictionary")
+                logger.warning(
+                    f"Failed to parse tool arguments: {parameters}, using empty dictionary"
+                )
                 parameters = {}
 
         try:
@@ -132,6 +140,7 @@ async def connect_to_mcp(server_url: str = None) -> Optional[StreamableMCPClient
     except Exception as e:
         print(f"Error connecting to MCP server: {e}")
         return None
+
 
 async def call_mcp_tool(tool_name: str, parameters: Dict[str, Any]) -> str:
     client = await connect_to_mcp()

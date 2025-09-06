@@ -1,10 +1,14 @@
 import asyncio
 import json
-from typing import Dict, Awaitable, Any, List
+from collections.abc import Awaitable
+from typing import Any, Dict, List
 
 from .schema import ToolCall
 
-async def run_concurrrently(tasks: Dict[str, Awaitable], return_exceptions: bool = True) -> Dict[str, Any]:
+
+async def run_concurrrently(
+    tasks: Dict[str, Awaitable], return_exceptions: bool = True
+) -> Dict[str, Any]:
     """Run a dictionary of tasks concurrently and return the results."""
     keys = list(tasks.keys())
     coroutines = [tasks[key] for key in keys]
