@@ -1,4 +1,5 @@
 import os
+import json
 import traceback
 from typing import Any, Dict, Optional
 
@@ -57,9 +58,17 @@ class StreamableMCPClient:
             tools.append(tool_dict)
         return tools
 
-    async def call_tool(self, tool_name: str, parameters: Dict[str, Any]) -> str:
+    async def call_tool(self, tool_name: str, parameters: Optional[str|Dict[str, Any]] = None) -> str:
         if not self.session:
             return "Not connected to MCP server"
+        
+        if isinstance(parameters, str):
+            try:
+                parameters = json.loads(parameters)
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse tool arguments: {parameters}, using empty dictionary")
+                parameters = {}
+
         try:
             print(f"Calling tool: {tool_name}")
             print(f"Parameters: {parameters}")

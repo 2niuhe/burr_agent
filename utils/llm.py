@@ -7,7 +7,7 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessage
 
 from logger import logger
-from utils.schema import ToolCall, Function
+from utils.schema import ToolCall, Function, Message, Memory
 
 dotenv.load_dotenv()
 
@@ -23,8 +23,8 @@ async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
 
 async def ask(
-    messages: List[Union[dict, Any]],
-    system_msgs: Optional[List[Union[dict, Any]]] = None,
+    messages: List[Message] | Memory,
+    system_msgs: Optional[List[Message]] | Memory = None,
     stream: bool = True,
     temperature: Optional[float] = None,
     tools: Optional[List[dict]] = None,
@@ -35,7 +35,7 @@ async def ask(
     Send a prompt to the LLM and get the response.
 
     Args:
-        messages: List of conversation messages
+        messages: List of conversation messages or Memory
         system_msgs: Optional system messages to prepend
         stream: Whether to stream the response
         temperature: Sampling temperature for the response
@@ -53,9 +53,14 @@ async def ask(
 
     # Combine system messages with user messages
     all_messages = []
+    if isinstance(messages, Memory):
+        messages = messages.messages
+    if isinstance(system_msgs, Memory):
+        system_msgs = system_msgs.messages
+
     if system_msgs:
-        all_messages.extend(system_msgs)
-    all_messages.extend(messages)
+        all_messages.extend([message.to_dict() for message in system_msgs])
+    all_messages.extend([message.to_dict() for message in messages])
 
     try:
         logger.info("Calling LLM API")

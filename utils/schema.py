@@ -53,8 +53,11 @@ TOOL_CHOICE_TYPE = Literal[TOOL_CHOICE_VALUES]  # type: ignore
 
 
 class ActionStreamMessage(BaseModel):
-    answer: str
+    content: str
     role: ROLE_TYPE = Field(default=Role.ASSISTANT)
+
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
 
 class Message(BaseModel):
     """Represents a chat message in the conversation"""
@@ -132,7 +135,7 @@ class Message(BaseModel):
     @classmethod
     def from_tool_calls(
         cls,
-        tool_calls: List[Any],
+        tool_calls: List[ToolCall],
         content: Union[str, List[str]] = "",
         **kwargs,
     ):
@@ -143,7 +146,7 @@ class Message(BaseModel):
             content: Optional message content
         """
         formatted_calls = [
-            {"id": call.id, "function": call.function.model_dump(), "type": "function"}
+            {"id": call.id, "function": call.function.to_dict(), "type": "function"}
             for call in tool_calls
         ]
         return cls(
@@ -158,14 +161,15 @@ class Memory(BaseModel):
     messages: List[Message] = Field(default_factory=list)
     max_messages: int = Field(default=100)
 
-    def add_message(self, message: Message) -> None:
+
+    def append(self, message: Message) -> None:
         """Add a message to memory"""
         self.messages.append(message)
         # Optional: Implement message limit
         if len(self.messages) > self.max_messages:
             self.messages = self.messages[-self.max_messages :]
 
-    def add_messages(self, messages: List[Message]) -> None:
+    def extend(self, messages: List[Message]) -> None:
         """Add multiple messages to memory"""
         self.messages.extend(messages)
         # Optional: Implement message limit
@@ -183,3 +187,30 @@ class Memory(BaseModel):
     def to_dict_list(self) -> List[dict]:
         """Convert messages to list of dicts"""
         return [msg.to_dict() for msg in self.messages]
+    
+
+class VibeStepMetadata(BaseModel):
+    name: str = Field(description="The short name of the step.")
+    goal: str = Field(description="What this step aims to achieve.")
+    hint: str = Field(description="Instructions on how to accomplish this step.")
+
+# 1. State Models from V4 Design
+class VibeStep(VibeStepMetadata):
+    """Defines a sub-task with its own memory (Sub-Agent)."""
+    step_id: int
+    chat_history: Memory = Field(default_factory=Memory, description="Independent chat/execution history for this sub-task.")
+    status: Literal["pending", "in_progress", "completed", "failed"] = "pending"
+
+
+class BasicState(BaseModel):
+    """State for the interactive mode."""
+    chat_history: Memory = Field(default_factory=Memory, description="The chat history.")
+    pending_tool_calls: List[ToolCall] = Field(default_factory=list, description="The pending tool calls.")
+    tool_execution_allowed: bool = Field(default=False, description="Whether to allow tool execution.")
+    exit_chat: bool = Field(default=False, description="Whether to exit the chat.")
+    _version: str = "0.0.1"
+
+    # Opetional Vibe Workflow state
+    vibe_plan: List[VibeStep] = Field(default_factory=list)
+    active_step_id: Optional[int] = None
+    current_goal: str = ""
