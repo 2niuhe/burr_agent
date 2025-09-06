@@ -25,7 +25,8 @@ async def init_mcp_tools():
 system_prompt = """You are a helpful assistant. You can use the following tools: {tool_names}. Please use these tools to help the user when needed.
 """
 
-def graph():
+async def get_graph():
+    await init_mcp_tools()
     return GraphBuilder().with_actions(
         get_init_input=get_user_input.bind(system_prompt=system_prompt),
         get_fellow_input=get_user_input,
@@ -43,16 +44,15 @@ def graph():
     ).build()
 
 
-def application():
+async def get_application():
     return ApplicationBuilder().with_graph(
-        graph()).with_entrypoint("get_init_input").with_tracker("local", project="burr_agent").build()
+        await get_graph()).with_entrypoint("get_init_input").with_tracker("local", project="burr_agent").build()
 
 
 async def chat():
 
     try:
-        await init_mcp_tools()
-        app = application()
+        app = await get_application()
         
         while True:
 

@@ -1,6 +1,5 @@
 import os
 import json
-import traceback
 from typing import Any, Dict, Optional
 
 import aiohttp
@@ -33,7 +32,7 @@ class StreamableMCPClient:
                 try:
                     async with session.get(server_url) as response:
                         logger.info(f"Server responded with status: {response.status}")
-                        if response.status >= 400:
+                        if response.status >= 500:
                             logger.warning(f"Server returned error status {response.status}")
                             return False
                 except aiohttp.ClientError as e:
@@ -53,7 +52,6 @@ class StreamableMCPClient:
             return True
         except Exception as e:
             print(f"Connection failed: {e}")
-            print(traceback.format_exc())
             await self.cleanup()
             return False
 
@@ -101,8 +99,7 @@ class StreamableMCPClient:
             return output
         except Exception as e:
             error_msg = f"Tool execution failed: {e}"
-            print(error_msg)
-            print(traceback.format_exc())
+            logger.warning(error_msg)
             return error_msg
 
     async def cleanup(self):
@@ -117,7 +114,6 @@ class StreamableMCPClient:
             print("Cleanup completed successfully")
         except Exception as e:
             print(f"Error during cleanup: {e}")
-            print(traceback.format_exc())
 
 
 async def connect_to_mcp(server_url: str = None) -> Optional[StreamableMCPClient]:
@@ -135,7 +131,6 @@ async def connect_to_mcp(server_url: str = None) -> Optional[StreamableMCPClient
             return None
     except Exception as e:
         print(f"Error connecting to MCP server: {e}")
-        print(traceback.format_exc())
         return None
 
 async def call_mcp_tool(tool_name: str, parameters: Dict[str, Any]) -> str:

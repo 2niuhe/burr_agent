@@ -1,37 +1,14 @@
 #!/usr/bin/env python3
 import asyncio
 from typing import Dict, Any, List
-from burr.core import GraphBuilder, ApplicationBuilder
-from burr.core import when, expr
-from actions import get_user_input, exit_chat, human_confirm, execute_tools, ask_llm
 from utils.schema import Role, Message, HumanConfirmResult
-from utils.mcp import connect_to_mcp, StreamableMCPClient
 from nicegui import ui, app
 import html
 import json
 
-# Global MCP client and tools
-mcp_client: StreamableMCPClient = None
-mcp_tools: list = []
-tool_names = []
+from graphs.async_talk_with_tool import get_application
 
-async def init_mcp_tools():
-    global mcp_client, mcp_tools, tool_names
-    try:
-        mcp_client = await connect_to_mcp()
-        if mcp_client:
-            mcp_tools = mcp_client.get_tools_for_llm()
-            tool_names = [tool["function"]["name"] for tool in mcp_tools]
-            print(f"Initialized MCP tools: {tool_names}")
-        return True
-    except Exception as e:
-        print(f"Failed to connect to MCP server: {e}")
-        return False
-
-def get_system_prompt():
-    """Get system prompt with current tool names"""
-    return f"""You are a helpful assistant. You can use the following tools: {tool_names}. Please use these tools to help the user when needed.
-"""
+from logger import logger
 
 class ChatInterface:
     def __init__(self):
@@ -41,54 +18,32 @@ class ChatInterface:
         self.current_response_message = None
         self.send_button = None
         self.current_spinner = None
-        self.chat_history: List[Dict[str, str]] = []
         self.pending_tool_confirmation = None
         self.current_pending_tools = []
-        self.init_burr_application()
     
-    def init_burr_application(self):
+    async def init_burr_application(self):
         """Initialize the Burr application with tool support"""
-        system_prompt = get_system_prompt()
-        
-        graph = GraphBuilder().with_actions(
-            get_init_input=get_user_input.bind(system_prompt=system_prompt),
-            get_fellow_input=get_user_input,
-            ask_llm_with_tool=ask_llm.bind(mcp_tools=mcp_tools),
-            execute_tools=execute_tools.bind(mcp_client=mcp_client),
-            human_confirm=human_confirm,
-        ).with_transitions(
-            ("get_init_input", "ask_llm_with_tool"),
-            ("get_fellow_input", "ask_llm_with_tool"),
-            ("ask_llm_with_tool", "human_confirm", ~when(pending_tool_calls=[])),
-            ("human_confirm", "execute_tools", when(tool_execution_allowed=True)),
-            ("human_confirm", "get_fellow_input", when(tool_execution_allowed=False)),
-            ("execute_tools", "get_fellow_input"),
-            ("ask_llm_with_tool", "get_fellow_input", when(pending_tool_calls=[])),
-        ).build()
-        
-        self.burr_app = ApplicationBuilder().with_graph(
-            graph).with_entrypoint("get_init_input").with_tracker("local", project="burr_agent_web").build()
+        self.burr_app = await get_application()
     
-    def clear_chat(self):
-        """Clear chat history and reset the application"""
-        self.chat_history.clear()
+    async def clear_chat(self):
+        """Clear chat and reset the application"""
         self.message_container.clear()
-        self.init_burr_application()
-        ui.notify("Chat history cleared", type='info')
+        await self.init_burr_application()
+        ui.notify("Chat cleared", type='info')
     
     def create_user_message(self, content: str):
         """Create a user message bubble with proper styling"""
-        with ui.row().classes('w-full justify-end mb-3'):
-            with ui.card().classes('user-message'):
-                with ui.card_section().classes('py-2 px-3'):
+        with ui.row().classes('w-full justify-end mb-1'):
+            with ui.card().classes('user-message message-bubble'):
+                with ui.card_section():
                     ui.markdown(content).classes('text-white')
     
     def create_assistant_message(self, content: str = ""):
         """Create an assistant message bubble that can be updated"""
-        with ui.row().classes('w-full justify-start mb-3'):
-            card = ui.card().classes('assistant-message')
+        with ui.row().classes('w-full justify-start mb-1'):
+            card = ui.card().classes('assistant-message message-bubble')
             with card:
-                section = ui.card_section().classes('py-2 px-3')
+                section = ui.card_section()
                 with section:
                     if content:
                         message_element = ui.markdown(content)
@@ -98,8 +53,8 @@ class ChatInterface:
     
     def create_tool_confirmation_ui(self, pending_tools: List[Dict]):
         """Create UI for tool execution confirmation"""
-        with ui.row().classes('w-full justify-center mb-3'):
-            with ui.card().classes('tool-confirmation-card'):
+        with ui.row().classes('w-full justify-center mb-1'):
+            with ui.card().classes('tool-confirmation'):
                 with ui.card_section().classes('py-3 px-4'):
                     ui.label('🔧 Tool Execution Request').classes('text-h6 mb-2')
                     ui.label(f'The assistant wants to execute {len(pending_tools)} tool(s):').classes('mb-3')
@@ -125,7 +80,7 @@ class ChatInterface:
     
     async def handle_tool_confirmation(self, allowed: bool):
         """Handle user's tool execution confirmation"""
-        print(f"Tool confirmation: {'allowed' if allowed else 'denied'}")  # Debug log
+        logger.debug(f"Tool confirmation: {'allowed' if allowed else 'denied'}")
         
         # Remove the confirmation UI first
         if self.pending_tool_confirmation:
@@ -177,9 +132,6 @@ class ChatInterface:
                 if self.current_response_message:
                     self.current_response_message.content = response_text
             
-            # Add assistant response to chat history
-            if response_text:
-                self.chat_history.append({"role": "assistant", "content": response_text})
             
         except Exception as e:
             error_message = f"❌ Error: {str(e)}"
@@ -188,9 +140,7 @@ class ChatInterface:
             try:
                 ui.notify(f"Error occurred: {str(e)}", type='negative')
             except:
-                print(f"Error occurred: {str(e)}")  # Fallback to console
-            # Add error to chat history
-            self.chat_history.append({"role": "assistant", "content": error_message})
+                logger.error(f"Error occurred: {str(e)}")
         
         finally:
             # Remove spinner and re-enable send button
@@ -223,8 +173,6 @@ class ChatInterface:
         if self.send_button:
             self.send_button.props('disable')
         
-        # Add user message to chat history
-        self.chat_history.append({"role": "user", "content": question})
         
         # Add user message to UI with custom styling
         with self.message_container:
@@ -271,23 +219,23 @@ class ChatInterface:
                         # Ensure tool_calls is iterable and contains valid objects
                         if isinstance(result.tool_calls, list):
                             detected_tool_calls.extend(result.tool_calls)
-                            print(f"Tool calls detected in stream: {len(result.tool_calls)} tools")  # Debug log
+                            logger.debug(f"Tool calls detected in stream: {len(result.tool_calls)} tools")
                         else:
-                            print(f"Tool calls is not a list: {type(result.tool_calls)}")  # Debug log
+                            logger.debug(f"Tool calls is not a list: {type(result.tool_calls)}")
                     except Exception as e:
-                        print(f"Error processing tool calls: {e}")  # Debug log
+                        logger.error(f"Error processing tool calls: {e}")
             
             # Check if we need to handle tool confirmation
             next_action = self.burr_app.get_next_action()
-            print(f"Next action: {next_action.name if next_action else 'None'}")  # Debug log
-            print(f"Detected tool calls in stream: {len(detected_tool_calls)} tools")  # Debug log
+            logger.debug(f"Next action: {next_action.name if next_action else 'None'}")
+            logger.debug(f"Detected tool calls in stream: {len(detected_tool_calls)} tools")
             
             if (next_action and next_action.name == "human_confirm") or detected_tool_calls:
                 pending_tools = []
                 
                 # First, try to use tool calls from the stream
                 if detected_tool_calls:
-                    print(f"Using tool calls from stream: {len(detected_tool_calls)} tools")  # Debug log
+                    logger.debug(f"Using tool calls from stream: {len(detected_tool_calls)} tools")
                     for tool_call in detected_tool_calls:
                         try:
                             # Extract tool information from ToolCall object
@@ -299,16 +247,16 @@ class ChatInterface:
                                 'name': tool_call.function.name,
                                 'arguments': arguments
                             })
-                            print(f"Added tool from stream: {tool_call.function.name} with args: {arguments}")  # Debug log
+                            logger.debug(f"Added tool from stream: {tool_call.function.name} with args: {arguments}")
                         except Exception as e:
-                            print(f"Error processing tool call from stream: {e}")  # Debug log
+                            logger.error(f"Error processing tool call from stream: {e}")
                 
                 # If no tools from stream, try application state as fallback
                 if not pending_tools:
                     app_state = self.burr_app.state
-                    print(f"App state has pending_tool_calls: {hasattr(app_state, 'pending_tool_calls')}")  # Debug log
+                    logger.debug(f"App state has pending_tool_calls: {hasattr(app_state, 'pending_tool_calls')}")
                     if hasattr(app_state, 'pending_tool_calls') and app_state.pending_tool_calls:
-                        print(f"Pending tool calls from state: {len(app_state.pending_tool_calls)}")  # Debug log
+                        logger.debug(f"Pending tool calls from state: {len(app_state.pending_tool_calls)}")
                         for tool_call in app_state.pending_tool_calls:
                             try:
                                 arguments = tool_call.function.arguments
@@ -320,10 +268,10 @@ class ChatInterface:
                                     'arguments': arguments
                                 })
                             except Exception as e:
-                                print(f"Error processing tool call from state: {e}")  # Debug log
+                                logger.error(f"Error processing tool call from state: {e}")
                 
                 if pending_tools:
-                    print(f"Creating tool confirmation UI for {len(pending_tools)} tools")  # Debug log
+                    logger.debug(f"Creating tool confirmation UI for {len(pending_tools)} tools")
                     try:
                         # Create tool confirmation UI
                         with self.message_container:
@@ -336,25 +284,20 @@ class ChatInterface:
                             self.current_spinner.delete()
                             self.current_spinner = None
                         
-                        print("Tool confirmation UI created successfully")  # Debug log
+                        logger.debug("Tool confirmation UI created successfully")
                         # Don't continue processing - wait for user confirmation
                         return
                     except Exception as e:
-                        print(f"Error creating tool confirmation UI: {e}")  # Debug log
+                        logger.error(f"Error creating tool confirmation UI: {e}")
                 else:
-                    print("No pending tools found")  # Debug log
+                    logger.debug("No pending tools found")
             
-            # Add assistant response to chat history
-            if response_text:
-                self.chat_history.append({"role": "assistant", "content": response_text})
             
         except Exception as e:
             # Handle errors
             error_message = f"❌ Error: {str(e)}"
             self.current_response_message.content = error_message
             
-            # Add error to chat history
-            self.chat_history.append({"role": "assistant", "content": error_message})
             ui.notify(f"Error occurred: {str(e)}", type='negative')
             
         finally:
@@ -365,152 +308,174 @@ class ChatInterface:
             if self.send_button:
                 self.send_button.props(remove='disable')
     
-    def export_chat_history(self):
-        """Export chat history as text"""
-        if not self.chat_history:
-            ui.notify("No chat history to export", type='warning')
-            return
-        
-        history_text = "# Chat History\n\n"
-        for message in self.chat_history:
-            role = message["role"].title()
-            content = message["content"]
-            history_text += f"**{role}:** {content}\n\n"
-        
-        # Create a downloadable file
-        ui.download(history_text.encode(), filename="chat_history.md")
-        ui.notify("Chat history exported", type='positive')
     
     def create_ui(self):
         """Create the NiceGUI interface"""
         ui.add_css(r'''
-            a:link, a:visited {color: inherit !important; text-decoration: none; font-weight: 500}
+            :root {
+                --primary: #2563eb;
+                --primary-light: #3b82f6;
+                --secondary: #f1f5f9;
+                --background: #fafafa;
+                --surface: #ffffff;
+                --text: #1e293b;
+                --text-light: #64748b;
+                --border: #e2e8f0;
+                --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+                --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+                --radius: 12px;
+                --radius-sm: 8px;
+            }
+            
+            /* Chat container */
             .chat-container {
-                max-height: 75vh; 
-                overflow-y: auto;
-                padding: 1rem 2rem;
-                background: #f8f9fa;
-            }
-            .message-input {background: white; border-radius: 20px;}
-            .user-message {
-                background: #1976d2 !important;
-                color: white !important;
-                margin-left: 15%;
-                max-width: 70% !important;
-                border-radius: 18px 18px 4px 18px !important;
-            }
-            .assistant-message {
-                background: white !important;
-                border: 1px solid #e0e0e0 !important;
-                margin-right: 15%;
-                max-width: 70% !important;
-                border-radius: 18px 18px 18px 4px !important;
-            }
-            .q-card {
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-            }
-            .chat-layout {
-                max-width: 100% !important;
-                width: 100% !important;
-                margin: 0 !important;
-                padding: 0 1rem !important;
-            }
-            .history-container {
-                max-height: 75vh;
+                height: calc(100vh - 120px);
                 overflow-y: auto;
                 padding: 1rem;
+                background: var(--background);
+                scroll-behavior: smooth;
             }
-            .tool-confirmation-card {
-                background: #fff3cd !important;
-                border: 2px solid #ffc107 !important;
-                border-radius: 12px !important;
-                box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3) !important;
+            
+            /* Message bubbles */
+            .message-bubble {
+                max-width: 75%;
+                margin-bottom: 0.75rem;
+                animation: slideIn 0.2s ease-out;
+            }
+            
+            @keyframes slideIn {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            
+            .user-message {
+                background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%) !important;
+                color: white !important;
+                margin-left: auto;
+                border-radius: var(--radius) var(--radius) 4px var(--radius) !important;
+                box-shadow: var(--shadow) !important;
+            }
+            
+            .assistant-message {
+                background: var(--surface) !important;
+                border: 1px solid var(--border) !important;
+                color: var(--text) !important;
+                margin-right: auto;
+                border-radius: var(--radius) var(--radius) var(--radius) 4px !important;
+                box-shadow: var(--shadow) !important;
+            }
+            
+            .message-bubble .q-card__section {
+                padding: 0.75rem 1rem !important;
+            }
+            
+            .message-bubble p {
+                margin: 0 !important;
+                line-height: 1.5;
+            }
+            
+            /* Tool confirmation */
+            .tool-confirmation {
+                background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
+                border: 1px solid #f59e0b !important;
+                border-radius: var(--radius) !important;
+                box-shadow: var(--shadow-lg) !important;
                 max-width: 80% !important;
+                margin: 1rem auto !important;
             }
-            .tool-confirmation-card .q-card__section {
-                border-radius: 12px !important;
+            
+            .tool-confirmation .q-card__section {
+                border-radius: var(--radius) !important;
+            }
+            
+            /* Input area */
+            .input-container {
+                background: var(--surface);
+                border-top: 1px solid var(--border);
+                padding: 1rem;
+                box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+            }
+            
+            .message-input {
+                background: var(--surface) !important;
+                border: 1px solid var(--border) !important;
+                border-radius: 4px !important;
+                transition: all 0.2s ease;
+            }
+            
+            .message-input:focus-within {
+                border-color: var(--primary) !important;
+                box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+            }
+            
+            /* Header */
+            .app-header {
+                background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%) !important;
+                box-shadow: var(--shadow) !important;
+            }
+            
+            /* Responsive design */
+            @media (max-width: 768px) {
+                .message-bubble { max-width: 90%; }
+                .chat-container { padding: 0.5rem; }
+                .input-container { padding: 0.75rem; }
+            }
+            
+            /* Loading states */
+            .typing-indicator {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+            }
+            
+            .typing-dot {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: var(--text-light);
+                animation: typing 1.4s infinite;
+            }
+            
+            .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+            .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+            
+            @keyframes typing {
+                0%, 60%, 100% { opacity: 0.3; }
+                30% { opacity: 1; }
             }
         ''')
         
-        # Layout setup for full height
-        ui.query('.q-page').classes('flex')
-        ui.query('.nicegui-content').classes('w-full')
+        # App layout setup
+        ui.query('.q-page').classes('flex column')
+        ui.query('.nicegui-content').classes('w-full h-full')
         
-        # Header
-        with ui.header().classes('bg-primary text-white shadow-2'):
+        # Compact header
+        with ui.header().classes('app-header').style('height: 56px'):
             with ui.row().classes('w-full items-center justify-between px-4'):
-                ui.label('Burr Agent Web Chat').classes('text-h6')
-                with ui.row():
-                    ui.button('Clear Chat', icon='clear', on_click=self.clear_chat) \
-                        .props('flat color=white')
-                    ui.button('Export', icon='download', on_click=self.export_chat_history) \
-                        .props('flat color=white')
+                ui.label('🤖 Burr Agent').classes('text-h6 font-medium')
+                ui.button(icon='refresh', on_click=lambda: asyncio.create_task(self.clear_chat())) \
+                    .props('flat round size=sm').tooltip('Clear chat')
         
-        with ui.tabs().classes('w-full') as tabs:
-            chat_tab = ui.tab('Chat')
-            history_tab = ui.tab('History')
+        # Main chat area
+        self.message_container = ui.column().classes('chat-container w-full')
         
-        with ui.tab_panels(tabs, value=chat_tab).classes('w-full chat-layout flex-grow items-stretch'):
-            # Chat panel - 主要聊天区域
-            self.message_container = ui.tab_panel(chat_tab).classes('items-stretch chat-container')
-            
-            # History panel - 聊天历史
-            with ui.tab_panel(history_tab).classes('history-container'):
-                ui.label('Chat History').classes('text-h6 mb-4')
+        # Input area
+        with ui.footer().classes('input-container'):
+            with ui.row().classes('w-full items-end gap-3 max-w-4xl mx-auto'):
+                self.text_input = ui.input(placeholder='Ask me anything...') \
+                    .props('outlined autogrow') \
+                    .classes('flex-grow message-input')
                 
-                def refresh_history():
-                    history_display.clear()
-                    if not self.chat_history:
-                        with history_display:
-                            ui.label('No chat history yet.').classes('text-grey-6 text-center')
-                    else:
-                        with history_display:
-                            for i, message in enumerate(self.chat_history):
-                                role = message["role"]
-                                content = message["content"]
-                                
-                                if role == 'user':
-                                    with ui.row().classes('w-full justify-end mb-3'):
-                                        with ui.card().classes('user-message'):
-                                            with ui.card_section().classes('py-2 px-3'):
-                                                ui.markdown(content).classes('text-white')
-                                else:
-                                    with ui.row().classes('w-full justify-start mb-3'):
-                                        with ui.card().classes('assistant-message'):
-                                            with ui.card_section().classes('py-2 px-3'):
-                                                ui.markdown(content)
-                
-                history_display = ui.column().classes('w-full')
-                refresh_history()
-                
-                ui.button('Refresh', icon='refresh', on_click=refresh_history) \
-                    .props('color=primary') \
-                    .classes('mt-4')
-        
-        # Footer with input - 全宽度布局
-        with ui.footer().classes('bg-white border-t'), ui.column().classes('w-full my-4 px-4'):
-            with ui.row().classes('w-full no-wrap items-center gap-2 max-w-6xl mx-auto'):
-                self.text_input = ui.input(placeholder='Type your message here...') \
-                    .props('rounded outlined dense') \
-                    .classes('flex-grow message-input') \
-                    .on('keydown.enter', self.send_message)
-                
-                self.send_button = ui.button('Send', icon='send', on_click=self.send_message) \
-                    .props('color=primary rounded')
-            
-            ui.markdown('Built with [Burr](https://github.com/DAGWorks-Inc/burr) and [NiceGUI](https://nicegui.io)') \
-                .classes('text-xs self-center mt-2 text-grey-6')
+                self.send_button = ui.button(icon='send', on_click=self.send_message) \
+                    .props('round color=primary size=md').style('min-width: 48px')
 
 
 @ui.page('/')
 async def main():
     """Main page setup"""
-    # Initialize MCP tools first
-    await init_mcp_tools()
-    
     chat_interface = ChatInterface()
-    # Re-initialize Burr application after MCP tools are loaded
-    chat_interface.init_burr_application()
+    # Initialize Burr application asynchronously
+    await chat_interface.init_burr_application()
     chat_interface.create_ui()
 
 

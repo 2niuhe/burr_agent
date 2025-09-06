@@ -10,7 +10,7 @@ from logger import logger
 from utils.schema import ActionStreamMessage, Role, ToolCall, Message, HumanConfirmResult
 from utils.llm import ask
 from utils.mcp import StreamableMCPClient, connect_to_mcp
-from utils.common import run_concurrrently
+from utils.common import run_concurrrently, get_tool_call_markdown
 
 
 @action.pydantic(reads=["chat_history"], writes=["chat_history", "exit_chat"])
@@ -108,7 +108,7 @@ async def execute_tools(state: BasicState, mcp_client: StreamableMCPClient=None)
 
             state.chat_history.append(tool_result_message)
 
-            yield ActionStreamMessage(content=tool_result+"\n", role=Role.TOOL), None
+            yield ActionStreamMessage(content=tool_result+"\n\n", role=Role.TOOL), None
         except Exception as e:
             logger.exception(f"Tool Call Failed: {e}")
 
@@ -174,8 +174,9 @@ async def ask_llm(state: BasicState, system_prompt: str = "", mcp_tools: List[di
     if tool_calls_detected and tool_calls:
         state.pending_tool_calls = tool_calls
         logger.info(f"Tool calls detected: {tool_calls}")
+        tool_calls_json = get_tool_call_markdown(tool_calls)
         yield ActionStreamMessage(
-            content=f"\nPending Tool Calls:\n {[tool_call.function.to_dict() for tool_call in tool_calls]}",
+            content=f"\n\nPending Tool Calls:\n\n{tool_calls_json}\n",
             tool_calls=tool_calls,
             role=Role.ASSISTANT), None
         yield ActionStreamMessage(content="", role=Role.ASSISTANT), state
