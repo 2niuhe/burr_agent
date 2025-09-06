@@ -7,7 +7,7 @@ import json
 from typing import Dict, List, Optional, Tuple
 from burr.core.action import streaming_action
 from logger import logger
-from utils.schema import ActionStreamMessage, Role, ToolCall, Message
+from utils.schema import ActionStreamMessage, Role, ToolCall, Message, HumanConfirmResult
 from utils.llm import ask
 from utils.mcp import StreamableMCPClient, connect_to_mcp
 from utils.common import run_concurrrently
@@ -43,17 +43,33 @@ async def exit_chat(state: BasicState) -> Tuple[ActionStreamMessage, Optional[Ba
     yield ActionStreamMessage(content="Goodbye!", role=Role.ASSISTANT), state
 
 
-@action.pydantic(reads=["pending_tool_calls"], writes=['tool_execution_allowed'])
-def human_confirm(state: BasicState, user_input: str) -> BasicState:
+@streaming_action.pydantic(
+    reads=["pending_tool_calls"],
+    writes=['tool_execution_allowed', 'chat_history'],
+    state_input_type=BasicState,
+    state_output_type=BasicState,
+    stream_type=HumanConfirmResult
+)
+async def human_confirm(state: BasicState, user_input: str='No') -> Tuple[ActionStreamMessage, Optional[BasicState]]:
     """Ask the user if they want to execute the tool calls."""
 
-    state.tool_execution_allowed = user_input in ['y', 'yes']
-    return state
+    allowed = user_input in ['y', 'yes']
+    if not allowed:
+        tool_names = [tool.function.name for tool in state.pending_tool_calls]
+        # clear pending tool calls
+        state.pending_tool_calls = []
+        state.chat_history.append(Message.assistant_message(content=f"Tool Calls Denied by user. Tool names: {tool_names}"))
+    state.tool_execution_allowed = allowed
+    result = HumanConfirmResult(allowed=allowed, content="")
+    if not allowed:
+        result.content = f"Tool Calls Denied by user. Tool names: {tool_names}"
+
+    yield result, state
 
 
 @streaming_action.pydantic(
     reads=['chat_history', 'pending_tool_calls'],
-    writes=['chat_history', 'pending_tool_calls'],
+    writes=['chat_history', 'pending_tool_calls', "tool_execution_allowed"],
     state_input_type=BasicState,
     state_output_type=BasicState,
     stream_type=ActionStreamMessage
@@ -85,7 +101,6 @@ async def execute_tools(state: BasicState, mcp_client: StreamableMCPClient=None)
             logger.info(f"Tool Call Result: {tool_result} for {tool_name}")
 
             tool_result_message = Message.tool_message(
-                role=Role.TOOL,
                 tool_call_id=tool_call_id,
                 name=tool_name,
                 content=tool_result,
@@ -93,14 +108,13 @@ async def execute_tools(state: BasicState, mcp_client: StreamableMCPClient=None)
 
             state.chat_history.append(tool_result_message)
 
-            yield ActionStreamMessage(content=tool_result, role=Role.TOOL), None
+            yield ActionStreamMessage(content=tool_result+"\n", role=Role.TOOL), None
         except Exception as e:
             logger.exception(f"Tool Call Failed: {e}")
 
     final_content_stream = await ask(
         state.chat_history, stream=True
     )
-
 
     # Stream final reply to user
     buffer = ""
@@ -125,8 +139,6 @@ async def execute_tools(state: BasicState, mcp_client: StreamableMCPClient=None)
 )
 async def ask_llm(state: BasicState, system_prompt: str = "", mcp_tools: List[dict] = []) -> Tuple[ActionStreamMessage, Optional[BasicState]]:
     """Async streaming call to LLM, handle tool calls, update conversation history."""
-
-
     # Add debug information
     logger.debug(f"MCP tools available: {mcp_tools}")
     logger.debug(f"System prompt: {system_prompt}")
@@ -162,8 +174,10 @@ async def ask_llm(state: BasicState, system_prompt: str = "", mcp_tools: List[di
     if tool_calls_detected and tool_calls:
         state.pending_tool_calls = tool_calls
         logger.info(f"Tool calls detected: {tool_calls}")
-        yield ActionStreamMessage(content=f"\nPending Tool Calls:\n {[tool_call.function.to_dict() for tool_call in tool_calls]}", role=Role.ASSISTANT), None
-        yield ActionStreamMessage(content="\n", role=Role.ASSISTANT), state
+        yield ActionStreamMessage(
+            content=f"\nPending Tool Calls:\n {[tool_call.function.to_dict() for tool_call in tool_calls]}",
+            role=Role.ASSISTANT), None
+        yield ActionStreamMessage(content="", role=Role.ASSISTANT), state
     else:
-        yield ActionStreamMessage(content="\n", role=Role.ASSISTANT), state
+        yield ActionStreamMessage(content="", role=Role.ASSISTANT), state
 

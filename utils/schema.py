@@ -217,3 +217,7 @@ class BasicState(BaseModel):
     vibe_plan: List[VibeStep] = Field(default_factory=list)
     active_step_id: Optional[int] = None
     current_goal: str = ""
+
+class HumanConfirmResult(BaseModel):
+    allowed: bool
+    content: str = ""
