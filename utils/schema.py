@@ -54,6 +54,7 @@ TOOL_CHOICE_TYPE = Literal[TOOL_CHOICE_VALUES]  # type: ignore
 
 class ActionStreamMessage(BaseModel):
     content: str
+    tool_calls: List[ToolCall] = Field(default_factory=list, description="The tool calls.")
     role: ROLE_TYPE = Field(default=Role.ASSISTANT)
 
     def __getitem__(self, key: str) -> Any:

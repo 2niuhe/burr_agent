@@ -73,7 +73,7 @@ async def chat():
                 if prompt.lower() in ["exit", "quit"]:
                     break
 
-            _, result_container = await app.astream_result(halt_after=["ask_llm_with_tool", "execute_tools"], halt_before=["get_fellow_input"], inputs={"user_input": prompt})
+            _, result_container = await app.astream_result(halt_after=["ask_llm_with_tool", "execute_tools"], inputs={"user_input": prompt})
             
             print(f"{Role.ASSISTANT.value}: ", end="", flush=True)
             async for result in result_container:

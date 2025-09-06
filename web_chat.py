@@ -4,12 +4,33 @@ from typing import Dict, Any, List
 from burr.core import GraphBuilder, ApplicationBuilder
 from burr.core import when, expr
 from actions import get_user_input, exit_chat, human_confirm, execute_tools, ask_llm
-from utils.schema import Role, Message
+from utils.schema import Role, Message, HumanConfirmResult
+from utils.mcp import connect_to_mcp, StreamableMCPClient
 from nicegui import ui, app
 import html
+import json
 
-# System prompt for the assistant
-system_prompt = """You are a helpful assistant.
+# Global MCP client and tools
+mcp_client: StreamableMCPClient = None
+mcp_tools: list = []
+tool_names = []
+
+async def init_mcp_tools():
+    global mcp_client, mcp_tools, tool_names
+    try:
+        mcp_client = await connect_to_mcp()
+        if mcp_client:
+            mcp_tools = mcp_client.get_tools_for_llm()
+            tool_names = [tool["function"]["name"] for tool in mcp_tools]
+            print(f"Initialized MCP tools: {tool_names}")
+        return True
+    except Exception as e:
+        print(f"Failed to connect to MCP server: {e}")
+        return False
+
+def get_system_prompt():
+    """Get system prompt with current tool names"""
+    return f"""You are a helpful assistant. You can use the following tools: {tool_names}. Please use these tools to help the user when needed.
 """
 
 class ChatInterface:
@@ -21,18 +42,28 @@ class ChatInterface:
         self.send_button = None
         self.current_spinner = None
         self.chat_history: List[Dict[str, str]] = []
+        self.pending_tool_confirmation = None
+        self.current_pending_tools = []
         self.init_burr_application()
     
     def init_burr_application(self):
-        """Initialize the Burr application"""
+        """Initialize the Burr application with tool support"""
+        system_prompt = get_system_prompt()
+        
         graph = GraphBuilder().with_actions(
             get_init_input=get_user_input.bind(system_prompt=system_prompt),
             get_fellow_input=get_user_input,
-            ask_llm=ask_llm
+            ask_llm_with_tool=ask_llm.bind(mcp_tools=mcp_tools),
+            execute_tools=execute_tools.bind(mcp_client=mcp_client),
+            human_confirm=human_confirm,
         ).with_transitions(
-            ("get_init_input", "ask_llm", when(exit_chat=False)),
-            ("get_fellow_input", "ask_llm", when(exit_chat=False)),
-            ("ask_llm", "get_fellow_input", when(exit_chat=False)),
+            ("get_init_input", "ask_llm_with_tool"),
+            ("get_fellow_input", "ask_llm_with_tool"),
+            ("ask_llm_with_tool", "human_confirm", ~when(pending_tool_calls=[])),
+            ("human_confirm", "execute_tools", when(tool_execution_allowed=True)),
+            ("human_confirm", "get_fellow_input", when(tool_execution_allowed=False)),
+            ("execute_tools", "get_fellow_input"),
+            ("ask_llm_with_tool", "get_fellow_input", when(pending_tool_calls=[])),
         ).build()
         
         self.burr_app = ApplicationBuilder().with_graph(
@@ -65,6 +96,121 @@ class ChatInterface:
                         message_element = ui.markdown("_Typing..._")
         return message_element
     
+    def create_tool_confirmation_ui(self, pending_tools: List[Dict]):
+        """Create UI for tool execution confirmation"""
+        with ui.row().classes('w-full justify-center mb-3'):
+            with ui.card().classes('tool-confirmation-card'):
+                with ui.card_section().classes('py-3 px-4'):
+                    ui.label('🔧 Tool Execution Request').classes('text-h6 mb-2')
+                    ui.label(f'The assistant wants to execute {len(pending_tools)} tool(s):').classes('mb-3')
+                    
+                    # Display tool details
+                    for i, tool_call in enumerate(pending_tools, 1):
+                        with ui.expansion(f"{i}. {tool_call['name']}", icon='build').classes('w-full mb-2'):
+                            ui.code(json.dumps(tool_call['arguments'], indent=2, ensure_ascii=False)).classes('text-xs')
+                    
+                    # Confirmation buttons
+                    with ui.row().classes('w-full justify-center gap-4 mt-4'):
+                        async def handle_allow():
+                            await self.handle_tool_confirmation(True)
+                        
+                        async def handle_deny():
+                            await self.handle_tool_confirmation(False)
+                        
+                        allow_btn = ui.button('✅ Allow', color='positive', on_click=handle_allow)
+                        deny_btn = ui.button('❌ Deny', color='negative', on_click=handle_deny)
+                    
+                    return allow_btn, deny_btn
+    
+    
+    async def handle_tool_confirmation(self, allowed: bool):
+        """Handle user's tool execution confirmation"""
+        print(f"Tool confirmation: {'allowed' if allowed else 'denied'}")  # Debug log
+        
+        # Remove the confirmation UI first
+        if self.pending_tool_confirmation:
+            try:
+                self.pending_tool_confirmation.delete()
+            except:
+                pass  # Ignore if already deleted
+            self.pending_tool_confirmation = None
+        
+        # Create new response message for tool execution results
+        with self.message_container:
+            self.current_response_message = self.create_assistant_message()
+            
+            # Add spinner for tool execution
+            with ui.row().classes('w-full justify-center'):
+                self.current_spinner = ui.spinner(type='dots', size='sm').classes('text-primary')
+        
+        # Continue with Burr application
+        try:
+            user_input = 'y' if allowed else 'n'
+            action, result_container = await self.burr_app.astream_result(
+                halt_after=["execute_tools", "get_fellow_input"], 
+                halt_before=[],
+                inputs={"user_input": user_input}
+            )
+            
+            response_text = ""
+            
+            # Stream the response
+            async for result in result_container:
+                content = result.get("content", "")
+                if content:
+                    response_text += content
+                    # Update the markdown content
+                    if self.current_response_message:
+                        self.current_response_message.content = response_text
+                    
+                    # Skip auto scroll during tool execution to avoid context issues
+                    pass
+            
+            # Ensure we have content to display
+            if not response_text:
+                if not allowed:
+                    response_text = "❌ Tool execution was denied by user. I cannot proceed with the requested operation."
+                else:
+                    response_text = "⚠️ No response received from the system."
+                
+                # Update the UI message
+                if self.current_response_message:
+                    self.current_response_message.content = response_text
+            
+            # Add assistant response to chat history
+            if response_text:
+                self.chat_history.append({"role": "assistant", "content": response_text})
+            
+        except Exception as e:
+            error_message = f"❌ Error: {str(e)}"
+            if self.current_response_message:
+                self.current_response_message.content = error_message
+            try:
+                ui.notify(f"Error occurred: {str(e)}", type='negative')
+            except:
+                print(f"Error occurred: {str(e)}")  # Fallback to console
+            # Add error to chat history
+            self.chat_history.append({"role": "assistant", "content": error_message})
+        
+        finally:
+            # Remove spinner and re-enable send button
+            if self.current_spinner:
+                try:
+                    self.current_spinner.delete()
+                except:
+                    pass  # Ignore if already deleted
+                self.current_spinner = None
+            
+            # Ensure message is not stuck in "Typing..." state
+            if self.current_response_message and self.current_response_message.content == "_Typing..._":
+                self.current_response_message.content = "❌ Operation completed."
+            
+            if self.send_button:
+                try:
+                    self.send_button.props(remove='disable')
+                except:
+                    pass  # Ignore if send button is not available
+    
     async def send_message(self) -> None:
         """Send a message and handle the streaming response"""
         if not self.text_input.value.strip():
@@ -94,15 +240,23 @@ class ChatInterface:
         try:
             # Get the action and result container from Burr
             action, result_container = await self.burr_app.astream_result(
-                halt_after=["ask_llm"], 
+                halt_after=["ask_llm_with_tool"], 
                 inputs={"user_input": question}
             )
             
             response_text = ""
+            detected_tool_calls = []
             
             # Stream the response
             async for result in result_container:
-                content = result.get("content", "")
+                # Handle different types of result objects
+                if hasattr(result, 'get'):
+                    content = result.get("content", "")
+                elif hasattr(result, 'content'):
+                    content = result.content
+                else:
+                    content = ""
+                
                 if content:
                     response_text += content
                     # Update the markdown content
@@ -110,6 +264,85 @@ class ChatInterface:
                     
                     # Auto scroll to bottom
                     ui.run_javascript('window.scrollTo(0, document.body.scrollHeight)')
+                
+                # Check if tool calls are detected in the stream message
+                if hasattr(result, 'tool_calls') and result.tool_calls:
+                    try:
+                        # Ensure tool_calls is iterable and contains valid objects
+                        if isinstance(result.tool_calls, list):
+                            detected_tool_calls.extend(result.tool_calls)
+                            print(f"Tool calls detected in stream: {len(result.tool_calls)} tools")  # Debug log
+                        else:
+                            print(f"Tool calls is not a list: {type(result.tool_calls)}")  # Debug log
+                    except Exception as e:
+                        print(f"Error processing tool calls: {e}")  # Debug log
+            
+            # Check if we need to handle tool confirmation
+            next_action = self.burr_app.get_next_action()
+            print(f"Next action: {next_action.name if next_action else 'None'}")  # Debug log
+            print(f"Detected tool calls in stream: {len(detected_tool_calls)} tools")  # Debug log
+            
+            if (next_action and next_action.name == "human_confirm") or detected_tool_calls:
+                pending_tools = []
+                
+                # First, try to use tool calls from the stream
+                if detected_tool_calls:
+                    print(f"Using tool calls from stream: {len(detected_tool_calls)} tools")  # Debug log
+                    for tool_call in detected_tool_calls:
+                        try:
+                            # Extract tool information from ToolCall object
+                            arguments = tool_call.function.arguments
+                            if isinstance(arguments, str):
+                                arguments = json.loads(arguments)
+                            
+                            pending_tools.append({
+                                'name': tool_call.function.name,
+                                'arguments': arguments
+                            })
+                            print(f"Added tool from stream: {tool_call.function.name} with args: {arguments}")  # Debug log
+                        except Exception as e:
+                            print(f"Error processing tool call from stream: {e}")  # Debug log
+                
+                # If no tools from stream, try application state as fallback
+                if not pending_tools:
+                    app_state = self.burr_app.state
+                    print(f"App state has pending_tool_calls: {hasattr(app_state, 'pending_tool_calls')}")  # Debug log
+                    if hasattr(app_state, 'pending_tool_calls') and app_state.pending_tool_calls:
+                        print(f"Pending tool calls from state: {len(app_state.pending_tool_calls)}")  # Debug log
+                        for tool_call in app_state.pending_tool_calls:
+                            try:
+                                arguments = tool_call.function.arguments
+                                if isinstance(arguments, str):
+                                    arguments = json.loads(arguments)
+                                
+                                pending_tools.append({
+                                    'name': tool_call.function.name,
+                                    'arguments': arguments
+                                })
+                            except Exception as e:
+                                print(f"Error processing tool call from state: {e}")  # Debug log
+                
+                if pending_tools:
+                    print(f"Creating tool confirmation UI for {len(pending_tools)} tools")  # Debug log
+                    try:
+                        # Create tool confirmation UI
+                        with self.message_container:
+                            self.pending_tool_confirmation = ui.column().classes('w-full')
+                            with self.pending_tool_confirmation:
+                                self.create_tool_confirmation_ui(pending_tools)
+                        
+                        # Remove spinner when showing confirmation UI
+                        if self.current_spinner:
+                            self.current_spinner.delete()
+                            self.current_spinner = None
+                        
+                        print("Tool confirmation UI created successfully")  # Debug log
+                        # Don't continue processing - wait for user confirmation
+                        return
+                    except Exception as e:
+                        print(f"Error creating tool confirmation UI: {e}")  # Debug log
+                else:
+                    print("No pending tools found")  # Debug log
             
             # Add assistant response to chat history
             if response_text:
@@ -187,6 +420,16 @@ class ChatInterface:
                 overflow-y: auto;
                 padding: 1rem;
             }
+            .tool-confirmation-card {
+                background: #fff3cd !important;
+                border: 2px solid #ffc107 !important;
+                border-radius: 12px !important;
+                box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3) !important;
+                max-width: 80% !important;
+            }
+            .tool-confirmation-card .q-card__section {
+                border-radius: 12px !important;
+            }
         ''')
         
         # Layout setup for full height
@@ -262,14 +505,19 @@ class ChatInterface:
 @ui.page('/')
 async def main():
     """Main page setup"""
+    # Initialize MCP tools first
+    await init_mcp_tools()
+    
     chat_interface = ChatInterface()
+    # Re-initialize Burr application after MCP tools are loaded
+    chat_interface.init_burr_application()
     chat_interface.create_ui()
 
 
 if __name__ == "__main__":
     # Enable async support in NiceGUI
     ui.run(
-        title='Burr Agent Web Chat',
+        title='Burr Agent Web Chat with Tools',
         port=8080,
         host='0.0.0.0',
         show=True,

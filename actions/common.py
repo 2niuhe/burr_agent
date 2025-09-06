@@ -176,6 +176,7 @@ async def ask_llm(state: BasicState, system_prompt: str = "", mcp_tools: List[di
         logger.info(f"Tool calls detected: {tool_calls}")
         yield ActionStreamMessage(
             content=f"\nPending Tool Calls:\n {[tool_call.function.to_dict() for tool_call in tool_calls]}",
+            tool_calls=tool_calls,
             role=Role.ASSISTANT), None
         yield ActionStreamMessage(content="", role=Role.ASSISTANT), state
     else:
