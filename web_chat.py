@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
+
 import asyncio
 from typing import Dict, Any, List
 from utils.schema import Role, Message, HumanConfirmResult
-from nicegui import ui, app
+from nicegui import ui, app, native
 import html
 import json
 
@@ -483,9 +484,10 @@ if __name__ == "__main__":
     # Enable async support in NiceGUI
     ui.run(
         title='Burr Agent Web Chat with Tools',
-        port=8080,
-        host='0.0.0.0',
-        favicon="🦀",
+        native=False,
+        port=native.find_open_port(start_port=8080),
+        host='127.0.0.1',
+        favicon="./favicon.ico",
         show=True,
         reload=False
     )

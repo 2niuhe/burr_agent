@@ -14,23 +14,29 @@ cmd = [
     "web_chat.py",
     "--name",
     "web_chat",
+    "-i",
+    "./favicon.ico",
     "--onefile",
     # Add nicegui data
     "--collect-all", "nicegui",
     "--collect-all", "pydantic",
     "--collect-all", "burr",
     # Add local source code directories
-    "--add-data", f"{project_root}{os.pathsep}.", # Add logger.py to the root of the bundle
+    "--add-data", f"{project_root / 'actions'}{os.pathsep}actions",
+    "--add-data", f"{project_root / 'graphs'}{os.pathsep}graphs",
+    "--add-data", f"{project_root / 'utils'}{os.pathsep}utils",
+    "--add-data", f"{project_root / 'logger.py'}{os.pathsep}.",
+    # "--add-data", f"{project_root}{os.pathsep}.",
     # Add .env file
-    "--add-data", f"{project_root / '.env'}{os.pathsep}.", # New: Add .env file
-    # "--exclude-module",
-    # "ruff",
-    # Add hidden imports for pydantic
-    # "--hidden-import", "pydantic",
-    # "--hidden-import", "pydantic.main",
-    # "--hidden-import", "pydantic_core",
-    # "--hidden-import", "pydantic.deprecated.decorator",
-    # "--hidden-import", "pydantic.dataclasses",
-    # "--hidden-import", "pydantic.json_schema",
+    "--add-data", f"{project_root / '.env'}{os.pathsep}.",
+    "--exclude-module", "ruff",
+    "--exclude-module", "ipython",
+    "--exclude-module", "mypy",
+    "--exclude-module", "pytest",
+    "--exclude-module", "ruff",
+    "--exclude-module", "flake8",
+    "--exclude-module", "build",
+    "--exclude-module", "twine",
+    "--exclude-module", "pre-commit",
 ]
 subprocess.call(cmd)
