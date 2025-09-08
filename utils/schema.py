@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import Any, List, Literal, Optional, Union
+from collections import OrderedDict
 
 from pydantic import BaseModel, Field
 
@@ -189,6 +190,14 @@ class VibeStepMetadata(BaseModel):
     name: str = Field(description="The short name of the step.")
     goal: str = Field(description="What this step aims to achieve.")
     hint: str = Field(description="Instructions on how to accomplish this step.")
+    
+    def to_ordered_dict(self) -> OrderedDict:
+        """Convert to OrderedDict maintaining field order: name, goal, hint"""
+        ordered_dict = OrderedDict()
+        ordered_dict["name"] = self.name
+        ordered_dict["goal"] = self.goal
+        ordered_dict["hint"] = self.hint
+        return ordered_dict
 
 
 # 1. State Models from V4 Design
