@@ -60,52 +60,15 @@ class ChatInterface:
                         message_element = ui.markdown(content)
                     else:
                         message_element = ui.markdown("_Typing..._")
+        
         return message_element
 
-    def create_tool_confirmation_ui(self, pending_tools: List[Dict]):
-        """Create UI for tool execution confirmation"""
-        with ui.row().classes("w-full justify-center mb-1"):
-            with ui.card().classes("tool-confirmation"):
-                with ui.card_section().classes("py-3 px-4"):
-                    ui.label("🔧 Tool Execution Request").classes("text-h6 mb-2")
-                    ui.label(
-                        f"The assistant wants to execute {len(pending_tools)} tool(s):"
-                    ).classes("mb-3")
-
-                    # Display tool details
-                    for i, tool_call in enumerate(pending_tools, 1):
-                        with ui.expansion(
-                            f"{i}. {tool_call['name']}", icon="build"
-                        ).classes("w-full mb-2"):
-                            ui.code(
-                                json.dumps(
-                                    tool_call["arguments"], indent=2, ensure_ascii=False
-                                )
-                            ).classes("text-xs")
-
-                    # Confirmation buttons
-                    with ui.row().classes("w-full justify-center gap-4 mt-4"):
-
-                        async def handle_allow():
-                            await self.handle_tool_confirmation(True)
-
-                        async def handle_deny():
-                            await self.handle_tool_confirmation(False)
-
-                        allow_btn = ui.button(
-                            "✅ Allow", color="positive", on_click=handle_allow
-                        )
-                        deny_btn = ui.button(
-                            "❌ Deny", color="negative", on_click=handle_deny
-                        )
-
-                    return allow_btn, deny_btn
 
     async def handle_tool_confirmation(self, allowed: bool):
         """Handle user's tool execution confirmation"""
         logger.debug(f"Tool confirmation: {'allowed' if allowed else 'denied'}")
 
-        # Remove the confirmation UI first
+        # Remove the confirmation buttons
         if self.pending_tool_confirmation:
             try:
                 self.pending_tool_confirmation.delete()
@@ -324,27 +287,37 @@ class ChatInterface:
 
                 if pending_tools:
                     logger.debug(
-                        f"Creating tool confirmation UI for {len(pending_tools)} tools"
+                        f"Creating tool confirmation buttons for {len(pending_tools)} tools"
                     )
                     try:
-                        # Create tool confirmation UI
-                        with self.message_container:
-                            self.pending_tool_confirmation = ui.column().classes(
-                                "w-full"
-                            )
-                            with self.pending_tool_confirmation:
-                                self.create_tool_confirmation_ui(pending_tools)
-
-                        # Remove spinner when showing confirmation UI
+                        # Remove current spinner
                         if self.current_spinner:
                             self.current_spinner.delete()
                             self.current_spinner = None
 
-                        logger.debug("Tool confirmation UI created successfully")
+                        # Add confirmation buttons after the current message
+                        with self.message_container:
+                            with ui.row().classes("w-full justify-center mb-2"):
+                                self.pending_tool_confirmation = ui.row().classes("gap-2")
+                                with self.pending_tool_confirmation:
+                                    ui.label("🔧 Confirm tool execution:").classes("text-sm text-gray-600")
+                                    ui.button(
+                                        "✅ Allow", 
+                                        color="positive",
+                                        on_click=lambda: asyncio.create_task(self.handle_tool_confirmation(True))
+                                    ).props("size=sm")
+                                    
+                                    ui.button(
+                                        "❌ Deny", 
+                                        color="negative",
+                                        on_click=lambda: asyncio.create_task(self.handle_tool_confirmation(False))
+                                    ).props("size=sm")
+
+                        logger.debug("Tool confirmation buttons created successfully")
                         # Don't continue processing - wait for user confirmation
                         return
                     except Exception as e:
-                        logger.error(f"Error creating tool confirmation UI: {e}")
+                        logger.error(f"Error creating tool confirmation buttons: {e}")
                 else:
                     logger.debug("No pending tools found")
 
@@ -429,19 +402,6 @@ class ChatInterface:
                 line-height: 1.5;
             }
 
-            /* Tool confirmation */
-            .tool-confirmation {
-                background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
-                border: 1px solid #f59e0b !important;
-                border-radius: var(--radius) !important;
-                box-shadow: var(--shadow-lg) !important;
-                max-width: 80% !important;
-                margin: 1rem auto !important;
-            }
-
-            .tool-confirmation .q-card__section {
-                border-radius: var(--radius) !important;
-            }
 
             /* Input area */
             .input-container {
