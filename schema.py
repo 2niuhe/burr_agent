@@ -196,9 +196,16 @@ class Memory(BaseModel):
         if len(self.messages) > self.max_messages:
             self.messages = self.messages[-self.max_messages :]
 
-    def clear(self) -> None:
+    def clear(self, except_roles: List[ROLE_TYPE] = []) -> None:
         """Clear all messages"""
-        self.messages.clear()
+        if except_roles:
+            self.messages = [message for message in self.messages if message.role in except_roles]
+        else:
+            self.messages.clear()
+        
+    def get_messages_except_system(self) -> List[Message]:
+        """Get messages except system messages"""
+        return [message for message in self.messages if message.role != Role.SYSTEM]
 
     def get_recent_messages(self, n: int) -> List[Message]:
         """Get n most recent messages"""

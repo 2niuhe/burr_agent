@@ -15,10 +15,6 @@ from logger import logger
 # 3. 支持yolo模式
 # 4. 支持vibe planner模式
 # 5. 支持配置mcp服务
-# 6. 优化提示词
-# 7. 支持内存压缩
-# 8. memory消息合并
-# 9. 简化代码
 
 
 class ChatInterface:
