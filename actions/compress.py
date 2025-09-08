@@ -9,7 +9,7 @@ from utils.llm import ask
 async def compress_memory(state: BasicState) -> BasicState:
     """Compress the memory."""
     logger.info("Compressing memory...")
-    compressed_memory = await ask(state.chat_history.get_messages_except_system(), stream=False, system_prompt=COMPRESS_MEMORY_PROMPT)
+    compressed_memory = await ask(state.chat_history.get_messages_except_system(), stream=False, system_msgs=[Message.system_message(content=COMPRESS_MEMORY_PROMPT)])
     state.chat_history.clear(except_roles=[Role.SYSTEM])
     compressed_msg = Message.user_message(content=compressed_memory)
     state.chat_history.append(compressed_msg)
