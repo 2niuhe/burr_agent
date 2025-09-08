@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 from collections import OrderedDict
 from pydantic import BaseModel, Field
-from utils.schema import VibeStepMetadata
+from schema import VibeStepMetadata
 import yaml
 from dotenv import load_dotenv
 

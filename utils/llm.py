@@ -7,7 +7,7 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessage
 
 from logger import logger
-from utils.schema import Function, Memory, Message, ToolCall
+from schema import Function, Memory, Message, ToolCall
 
 dotenv.load_dotenv()
 

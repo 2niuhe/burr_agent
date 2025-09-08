@@ -7,7 +7,7 @@ from logger import logger
 from utils.common import get_tool_call_markdown, run_concurrrently
 from utils.llm import ask
 from utils.mcp import StreamableMCPClient, connect_to_mcp
-from utils.schema import (
+from schema import (
     ActionStreamMessage,
     BasicState,
     HumanConfirmResult,

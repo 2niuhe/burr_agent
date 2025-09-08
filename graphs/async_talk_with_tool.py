@@ -5,7 +5,7 @@ from burr.integrations.pydantic import PydanticTypingSystem
 
 from actions import ask_llm, execute_tools, get_user_input, human_confirm
 from utils.mcp import StreamableMCPClient, connect_to_mcp
-from utils.schema import HumanConfirmResult, Role, BasicState
+from schema import HumanConfirmResult, Role, BasicState
 
 # NOTE: with this graph, you can use tools
 

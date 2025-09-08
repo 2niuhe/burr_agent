@@ -3,7 +3,7 @@ import json
 from collections.abc import Awaitable
 from typing import Any, Dict, List
 
-from .schema import ToolCall
+from schema import ToolCall
 
 
 async def run_concurrrently(

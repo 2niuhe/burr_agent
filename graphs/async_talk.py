@@ -3,7 +3,7 @@ import asyncio
 from burr.core import ApplicationBuilder, GraphBuilder, when
 
 from actions import ask_llm, get_user_input
-from utils.schema import Role
+from schema import Role
 
 # NOTE: with this graph, you can not use tools
 
