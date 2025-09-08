@@ -161,14 +161,37 @@ class Memory(BaseModel):
 
     def append(self, message: Message) -> None:
         """Add a message to memory"""
-        self.messages.append(message)
+
+        if (self.messages and 
+            self.messages[-1].role == message.role):
+            
+            content = ""
+            if self.messages[-1].content:
+                content += self.messages[-1].content
+            if message.content:
+                content += '\n' + message.content
+
+            self.messages[-1].content = content
+            
+            tool_calls = []
+            if self.messages[-1].tool_calls:
+                tool_calls.extend(self.messages[-1].tool_calls)
+            if message.tool_calls:
+                tool_calls.extend(message.tool_calls)
+
+            self.messages[-1].tool_calls = tool_calls
+        else:
+            self.messages.append(message)
+        
         # Optional: Implement message limit
         if len(self.messages) > self.max_messages:
             self.messages = self.messages[-self.max_messages :]
 
     def extend(self, messages: List[Message]) -> None:
         """Add multiple messages to memory"""
-        self.messages.extend(messages)
+        for message in messages:
+            self.append(message)
+        
         # Optional: Implement message limit
         if len(self.messages) > self.max_messages:
             self.messages = self.messages[-self.max_messages :]

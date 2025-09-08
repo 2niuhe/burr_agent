@@ -481,9 +481,10 @@ class ChatInterface:
         with ui.footer().classes("input-container"):
             with ui.row().classes("w-full items-end gap-3 max-w-4xl mx-auto"):
                 self.text_input = (
-                    ui.input(placeholder="Ask me anything...")
+                    ui.input(placeholder="Ask anything... (Ctrl+Enter to send)")
                     .props("outlined autogrow")
                     .classes("flex-grow message-input")
+                    .on('keydown.ctrl.enter', self.send_message)
                 )
 
                 self.send_button = (
