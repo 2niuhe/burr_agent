@@ -1,6 +1,8 @@
 llm_api_key: EMPTY
 llm_base_url: https://api.deepseek.com/
 llm_model: deepseek-chat
+compress_threshold: 32000
+toolresult_compress_threshold: 10000
 mcp_urls:
   - http://localhost:8008/mcp
   - http://localhost:8001/mcp

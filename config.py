@@ -59,6 +59,8 @@ class Config(BaseModel):
     llm_base_url: str = Field(default=os.getenv("LLM_BASE_URL", ""))
     llm_api_key: str = Field(default=os.getenv("LLM_API_KEY", "EMPTY"))
     llm_model: str = Field(default=os.getenv("LLM_MODEL", ""))
+    memory_compress_threshold: int = Field(default=32000, description="The threshold of the chat history to compress.")
+    toolresult_compress_threshold: int = Field(default=10000, description="The threshold of the tool result to compress.")
     mcp_urls: List[str] = Field(default_factory=list)
     workflows: List[Workflow] = Field(default_factory=list)
     

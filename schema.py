@@ -2,6 +2,8 @@ from enum import Enum
 from typing import Any, List, Literal, Optional, Union
 from collections import OrderedDict
 
+from logger import logger
+
 from pydantic import BaseModel, Field
 
 
@@ -121,8 +123,18 @@ class Message(BaseModel):
         return cls(role=Role.ASSISTANT, content=content)
 
     @classmethod
-    def tool_message(cls, content: str, name, tool_call_id: str) -> "Message":
+    async def tool_message(cls, content: str, name, tool_call_id: str) -> "Message":
         """Create a tool message"""
+        from config import CONFIG
+        if len(content) > CONFIG.toolresult_compress_threshold:
+            logger.info(f"Tool result is too large, compressing...")
+            from utils.prompts import COMPRESS_TOOL_RESULT_PROMPT
+            from utils.llm import ask
+            messages = [
+                Message.system_message(content=COMPRESS_TOOL_RESULT_PROMPT),
+                Message.user_message(content=content),
+            ]
+            content = await ask(messages, stream=False)
         return cls(
             role=Role.TOOL,
             content=content,
@@ -157,9 +169,28 @@ class Message(BaseModel):
 
 class Memory(BaseModel):
     messages: List[Message] = Field(default_factory=list)
-    max_messages: int = Field(default=100)
 
-    def append(self, message: Message) -> None:
+    @property
+    def total_tokens(self) -> int:
+        """Count the number of tokens in the memory"""
+        return sum([len(message.content) for message in self.messages if message.content])
+
+
+    async def compress_message(self) -> None:
+        """Compress a message"""
+        from config import CONFIG
+        if self.total_tokens > CONFIG.memory_compress_threshold:
+            logger.info(f"Memory is too large, compressing...")
+            from utils.prompts import COMPRESS_MEMORY_PROMPT
+            from utils.llm import ask
+            system_messages = [Message.system_message(content=COMPRESS_MEMORY_PROMPT)]
+            user_messages = self.get_messages_except_system()
+            content = await ask(user_messages, system_msgs=system_messages, stream=False)
+            self.messages.clear(except_roles=[Role.SYSTEM])
+            self.messages.append(Message.user_message(content=content))
+
+
+    def append(self, message: Message, compress: bool = False) -> None:
         """Add a message to memory"""
 
         if (self.messages and 
@@ -182,19 +213,13 @@ class Memory(BaseModel):
             self.messages[-1].tool_calls = tool_calls
         else:
             self.messages.append(message)
-        
-        # Optional: Implement message limit
-        if len(self.messages) > self.max_messages:
-            self.messages = self.messages[-self.max_messages :]
+
 
     def extend(self, messages: List[Message]) -> None:
         """Add multiple messages to memory"""
         for message in messages:
             self.append(message)
-        
-        # Optional: Implement message limit
-        if len(self.messages) > self.max_messages:
-            self.messages = self.messages[-self.max_messages :]
+
 
     def clear(self, except_roles: List[ROLE_TYPE] = []) -> None:
         """Clear all messages"""
@@ -256,7 +281,6 @@ class BasicState(BaseModel):
     tool_execution_allowed: bool = Field(
         default=False, description="Whether to allow tool execution."
     )
-
     # tool_call mode
     yolo_mode: bool = Field(default=False, description="Whether to use yolo mode.")
     

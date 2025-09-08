@@ -56,3 +56,19 @@ The structure MUST be as follows:
         -->
     </current_plan>
 </state_snapshot>"""
+
+
+COMPRESS_TOOL_RESULT_PROMPT = r"""You are the component that summarizes the tool result into a given structure.
+
+When the tool result grows too large, you will be invoked to distill the tool result into a concise, structured XML snapshot. This snapshot is CRITICAL, as it will become the agent's *only* memory of the tool call result. The agent will resume its work based solely on this snapshot. All crucial details, errors, and user directives MUST be preserved.
+
+First, you will think through the entire tool result in a private <scratchpad>. Review the tool result and the user's overall goal. Identify every piece of information that is essential for future actions.
+
+After your reasoning is complete, generate the final <tool_result_snapshot> XML object. Be incredibly dense with information. Omit any irrelevant conversational filler.
+
+<tool_result_snapshot>
+    <tool_result>
+        <!-- The tool result. -->
+    </tool_result>
+</tool_result_snapshot>
+"""

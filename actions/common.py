@@ -4,6 +4,7 @@ from burr.core import action
 from burr.core.action import streaming_action
 
 from logger import logger
+from config import CONFIG
 from utils.common import get_tool_call_markdown, run_concurrrently
 from utils.llm import ask
 from utils.mcp import StreamableMCPClient, connect_to_mcp
@@ -120,7 +121,7 @@ async def execute_tools(
             tool_name = tool_call_id_to_name[tool_call_id]
             logger.info(f"Tool Call Result: {tool_result} for {tool_name}")
 
-            tool_result_message = Message.tool_message(
+            tool_result_message = await Message.tool_message(
                 tool_call_id=tool_call_id,
                 name=tool_name,
                 content=tool_result,
@@ -146,6 +147,8 @@ async def execute_tools(
     # Add final reply to history and finish
     final_assistant_message = Message.assistant_message(content=buffer)
     state.chat_history.append(final_assistant_message)
+    await state.chat_history.compress_message()
+
     state.pending_tool_calls = []
     state.tool_execution_allowed = False
     yield ActionStreamMessage(content="", role=Role.ASSISTANT), state
