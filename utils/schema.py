@@ -209,12 +209,18 @@ class BasicState(BaseModel):
     chat_history: Memory = Field(
         default_factory=Memory, description="The chat history."
     )
+
+    # for human confirm
     pending_tool_calls: List[ToolCall] = Field(
         default_factory=list, description="The pending tool calls."
     )
     tool_execution_allowed: bool = Field(
         default=False, description="Whether to allow tool execution."
     )
+
+    # tool_call mode
+    yolo_mode: bool = Field(default=False, description="Whether to use yolo mode.")
+    
     exit_chat: bool = Field(default=False, description="Whether to exit the chat.")
     _version: str = "0.0.1"
 

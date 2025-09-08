@@ -1,10 +1,11 @@
 import asyncio
 
 from burr.core import ApplicationBuilder, GraphBuilder, when
+from burr.integrations.pydantic import PydanticTypingSystem
 
 from actions import ask_llm, execute_tools, get_user_input, human_confirm
 from utils.mcp import StreamableMCPClient, connect_to_mcp
-from utils.schema import HumanConfirmResult, Role
+from utils.schema import HumanConfirmResult, Role, BasicState
 
 # NOTE: with this graph, you can use tools
 
@@ -41,19 +42,22 @@ async def get_graph():
         .with_transitions(
             ("get_init_input", "ask_llm_with_tool"),
             ("get_fellow_input", "ask_llm_with_tool"),
-            ("ask_llm_with_tool", "human_confirm", ~when(pending_tool_calls=[])),
+            ("ask_llm_with_tool", "human_confirm", ~when(pending_tool_calls=[]) & when(yolo_mode=False)),
             ("human_confirm", "execute_tools", when(tool_execution_allowed=True)),
             ("human_confirm", "get_fellow_input", when(tool_execution_allowed=False)),
             ("execute_tools", "get_fellow_input"),
+            ("ask_llm_with_tool", "execute_tools", when(yolo_mode=True) & ~when(pending_tool_calls=[])),
             ("ask_llm_with_tool", "get_fellow_input", when(pending_tool_calls=[])),
         )
         .build()
     )
 
 
-async def get_application():
+async def get_application(yolo_mode: bool=False):
     return (
         ApplicationBuilder()
+        .with_typing(PydanticTypingSystem(BasicState))
+        .with_state(BasicState(yolo_mode=yolo_mode))
         .with_graph(await get_graph())
         .with_entrypoint("get_init_input")
         .with_tracker("local", project="burr_agent")
@@ -100,5 +104,30 @@ async def chat():
             await mcp_client.cleanup()
 
 
+async def yolo_chat():
+    try:
+        app = await get_application(yolo_mode=True)
+        while True:
+            if app.get_next_action().name in ["get_init_input", "get_fellow_input"]:
+                prompt = input(f"{Role.USER.value}: ")
+            else:
+                prompt = ""
+            if prompt.lower() in ["exit", "quit"]:
+                break
+            _, result_container = await app.astream_result(
+                halt_after=["ask_llm_with_tool", "execute_tools"],
+                inputs={"user_input": prompt},
+            )
+            print(f"{Role.ASSISTANT.value}: ", end="", flush=True)
+            async for result in result_container:
+                print(result.content, end="", flush=True)
+
+            print()
+    except KeyboardInterrupt:
+        print("\nGoodbye!")
+    finally:
+        if mcp_client:
+            await mcp_client.cleanup()
+
 if __name__ == "__main__":
-    asyncio.run(chat())
+    asyncio.run(yolo_chat())
