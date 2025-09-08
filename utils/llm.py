@@ -1,19 +1,18 @@
-import os
 from collections.abc import AsyncGenerator
 from typing import Any, Dict, List, Optional, Union
 
-import dotenv
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessage
 
 from logger import logger
 from schema import Function, Memory, Message, ToolCall
 
-dotenv.load_dotenv()
+from config import CONFIG
 
-api_key = os.getenv("LLM_API_KEY")
-base_url = os.getenv("LLM_BASE_URL")
-default_model = os.getenv("LLM_MODEL")
+
+api_key = CONFIG.llm_api_key
+base_url = CONFIG.llm_base_url
+default_model = CONFIG.llm_model
 
 assert all(
     [api_key, base_url, default_model]
