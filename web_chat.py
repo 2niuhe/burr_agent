@@ -390,7 +390,7 @@ class ChatInterface:
             }
 
             .message-bubble .q-card__section {
-                padding: 0.75rem 1rem !important;
+                padding: 0.1rem 0.3rem !important;
             }
 
             .message-bubble p {
