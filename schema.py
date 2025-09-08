@@ -189,7 +189,7 @@ class Memory(BaseModel):
 class VibeStepMetadata(BaseModel):
     name: str = Field(description="The short name of the step.")
     goal: str = Field(description="What this step aims to achieve.")
-    hint: str = Field(description="Instructions on how to accomplish this step.")
+    hint: str = Field(description="Instructions on how to accomplish this step.", default="")
     
     def to_ordered_dict(self) -> OrderedDict:
         """Convert to OrderedDict maintaining field order: name, goal, hint"""

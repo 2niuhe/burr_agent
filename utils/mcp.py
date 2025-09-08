@@ -1,18 +1,17 @@
 import json
-import os
 from typing import Any, Dict, Optional
 
 import aiohttp
-from dotenv import load_dotenv
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool
 
 from logger import logger
 
-load_dotenv()
+from config import CONFIG
 
-assert os.getenv("MCP_SERVER_URL"), "MCP_SERVER_URL environment variable not set"
+if not CONFIG.mcp_urls:
+    logger.error("mcp_urls not set")
 
 
 class StreamableMCPClient:
@@ -125,10 +124,10 @@ class StreamableMCPClient:
 
 
 async def connect_to_mcp(server_url: str = None) -> Optional[StreamableMCPClient]:
-    if server_url is None:
-        server_url = os.getenv("MCP_SERVER_URL")
+    if server_url is None and CONFIG.mcp_urls:
+        server_url = CONFIG.mcp_urls[0]
     if not server_url:
-        print("MCP_SERVER_URL environment variable not set")
+        print("mcp_urls not set in config.yaml")
         return None
     client = StreamableMCPClient()
     try:

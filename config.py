@@ -135,9 +135,8 @@ class Config(BaseModel):
             return True
         return False
 
+CONFIG = Config.load()
 
 if __name__ == "__main__":
-    config = Config.load()
+    config = CONFIG
     print(config)
-    config.add_workflow(Workflow(name="test", overall_goal="test", steps=[VibeStepMetadata(name="test", goal="test", hint="test")]))
-    config.save()

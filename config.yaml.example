@@ -1,0 +1,18 @@
+llm_api_key: EMPTY
+llm_base_url: https://api.deepseek.com/
+llm_model: deepseek-chat
+mcp_urls:
+  - http://localhost:8008/mcp
+  - http://localhost:8001/mcp
+workflows:
+- name: calculator
+  description: 'do some addition'
+  overall_goal: 'get the result'
+  steps:
+  - name: addition
+    goal: add 5 to 6
+    hint: use the addition tool
+  - name: additon
+    goal: add previous result to 60
+  - name: summary
+    goal: summary the result
