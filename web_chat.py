@@ -103,9 +103,6 @@ class ChatInterface:
                     if self.current_response_message:
                         self.current_response_message.content = response_text
 
-                    # Skip auto scroll during tool execution to avoid context issues
-                    pass
-
             # Ensure we have content to display
             if not response_text:
                 if not allowed:
@@ -121,10 +118,7 @@ class ChatInterface:
             error_message = f"❌ Error: {str(e)}"
             if self.current_response_message:
                 self.current_response_message.content = error_message
-            try:
-                ui.notify(f"Error occurred: {str(e)}", type="negative")
-            except:
-                logger.error(f"Error occurred: {str(e)}")
+            ui.notify(f"Error occurred: {str(e)}", type="negative")
 
         finally:
             # Remove spinner and re-enable send button
@@ -225,7 +219,10 @@ class ChatInterface:
                     try:
                         # Remove current spinner
                         if self.current_spinner:
-                            self.current_spinner.delete()
+                            try:
+                                self.current_spinner.delete()
+                            except:
+                                pass  # Ignore if already deleted
                             self.current_spinner = None
 
                         # Add confirmation buttons after the current message
@@ -261,7 +258,10 @@ class ChatInterface:
         finally:
             # Remove spinner and re-enable send button
             if self.current_spinner:
-                self.current_spinner.delete()
+                try:
+                    self.current_spinner.delete()
+                except:
+                    pass  # Ignore if already deleted
                 self.current_spinner = None
             if self.send_button:
                 self.send_button.props(remove="disable")
