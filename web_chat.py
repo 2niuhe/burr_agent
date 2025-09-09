@@ -27,7 +27,7 @@ class ChatInterface:
         self.text_input = None
         self.current_response_message = None
         self.send_button = None
-        self.current_spinner = None
+        self.current_spinner: ui.spinner = None
         self.pending_tool_confirmation = None
         self.current_pending_tools = []
 
