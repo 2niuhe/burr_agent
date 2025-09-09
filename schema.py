@@ -126,15 +126,36 @@ class Message(BaseModel):
     async def tool_message(cls, content: str, name, tool_call_id: str) -> "Message":
         """Create a tool message"""
         from config import CONFIG
-        if len(content) > CONFIG.toolresult_compress_threshold:
-            logger.info(f"Tool result is too large, compressing...")
+        original_content_length = len(content)
+        if original_content_length > CONFIG.toolresult_compress_threshold:
+            logger.warning(f"Tool result is too large: {original_content_length}, compressing...")
             from utils.prompts import COMPRESS_TOOL_RESULT_PROMPT
             from utils.llm import ask
-            messages = [
-                Message.system_message(content=COMPRESS_TOOL_RESULT_PROMPT),
-                Message.user_message(content=content),
-            ]
-            content = await ask(messages, stream=False)
+            from utils.common import run_concurrrently
+
+            def split_chunks(text, chunk_size, overlap):
+                chunks = []
+                start = 0
+                content_length = len(text)
+                while start < content_length:
+                    end = min(start + chunk_size, content_length)
+                    chunk = text[start:end]
+                    chunks.append(chunk)
+                    if end == content_length:
+                        break
+                    next_start = end - overlap if (end - overlap) > start else end
+                    start = next_start
+                return chunks
+
+            chunk_size = 4 * CONFIG.toolresult_compress_threshold
+            overlap = max(100, chunk_size // 100)
+            chunks = split_chunks(content, chunk_size, overlap)
+            chunk_idxs = list(range(len(chunks)))
+            tasks = {idx: ask([Message.system_message(content=COMPRESS_TOOL_RESULT_PROMPT), Message.user_message(content=chunk)], stream=False) for idx, chunk in enumerate(chunks)}
+            results = await run_concurrrently(tasks)
+            compressed_chunks = [results[idx] for idx in chunk_idxs]
+            content = "\n".join(compressed_chunks)
+            logger.warning(f"Tool result compressed: {len(content)}, compress rate: {original_content_length / len(content)}")
         return cls(
             role=Role.TOOL,
             content=content,

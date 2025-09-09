@@ -121,6 +121,12 @@ async def execute_tools(
             tool_name = tool_call_id_to_name[tool_call_id]
             logger.info(f"Tool Call Result: {tool_result} for {tool_name}")
 
+            if len(tool_result) > CONFIG.toolresult_compress_threshold:
+                yield (
+                    ActionStreamMessage(content="Tool result is too large, compressing...", role=Role.TOOL),
+                    None,
+                )
+
             tool_result_message = await Message.tool_message(
                 tool_call_id=tool_call_id,
                 name=tool_name,
@@ -128,7 +134,6 @@ async def execute_tools(
             )
 
             state.chat_history.append(tool_result_message)
-
             yield (
                 ActionStreamMessage(content=tool_result + "\n\n", role=Role.TOOL),
                 None,
@@ -136,6 +141,8 @@ async def execute_tools(
         except Exception as e:
             logger.exception(f"Tool Call Failed: {e}")
 
+    state.chat_history.append(Message.user_message(
+        content="Tool Call Completed Briefly summarize the result[Shortly] and what should to do next step."))
     final_content_stream = await ask(state.chat_history, stream=True)
 
     # Stream final reply to user
