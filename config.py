@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 from typing import List, Dict, Any
 from collections import OrderedDict
@@ -12,7 +13,15 @@ from logger import logger
 load_dotenv()
 
 CONFIG_FILENAME = "config.yaml"
-PROJECT_DIR = Path(__file__).resolve().parent
+
+# Handle PyInstaller bundled app path
+if getattr(sys, 'frozen', False):
+    # Running in a PyInstaller bundle
+    PROJECT_DIR = Path(sys.executable).parent
+else:
+    # Running in normal Python environment
+    PROJECT_DIR = Path(__file__).resolve().parent
+
 CONFIG_PATH = PROJECT_DIR / CONFIG_FILENAME
 
 
