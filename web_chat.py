@@ -16,6 +16,12 @@ from logger import logger
 # 3. 支持yolo模式
 # 4. 支持vibe planner模式
 # 5. 支持配置mcp服务
+# 6. 代码添加类型
+# 7. 配置页面路由和持久化层，例如 /chat/chat_uuid/ 支持重新加载继续聊
+# 8. 支持分享聊天内容 /share/chat_uuid/
+# 9. 支持聊天过程中切换mcp server
+# 10. 支持遥测，对一个聊天会话打分，并上传历史到远端
+# 11. 支持显示当前状态，包括mcp server、工作流、yolo模式
 
 AGENT_NAME = "Burr Agent"
 
