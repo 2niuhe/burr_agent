@@ -3,6 +3,7 @@
 import asyncio
 import json
 from typing import Dict, List
+from schema import ActionStreamMessage, ToolCall
 
 from nicegui import native, ui
 
@@ -15,6 +16,8 @@ from logger import logger
 # 3. 支持yolo模式
 # 4. 支持vibe planner模式
 # 5. 支持配置mcp服务
+
+AGENT_NAME = "Burr Agent"
 
 
 class ChatInterface:
@@ -62,8 +65,6 @@ class ChatInterface:
 
     async def handle_tool_confirmation(self, allowed: bool):
         """Handle user's tool execution confirmation"""
-        logger.debug(f"Tool confirmation: {'allowed' if allowed else 'denied'}")
-
         # Remove the confirmation buttons
         if self.pending_tool_confirmation:
             try:
@@ -177,50 +178,25 @@ class ChatInterface:
             action, result_container = await self.burr_app.astream_result(
                 halt_after=["ask_llm_with_tool"], inputs={"user_input": question}
             )
-
             response_text = ""
-            detected_tool_calls = []
+            detected_tool_calls: List[ToolCall] = []
 
-            # Stream the response
             async for result in result_container:
-                # Handle different types of result objects
-                if hasattr(result, "get"):
-                    content = result.get("content", "")
-                elif hasattr(result, "content"):
-                    content = result.content
-                else:
-                    content = ""
+                result: ActionStreamMessage = result
+                content = result.content
 
                 if content:
                     response_text += content
-                    # Update the markdown content
                     self.current_response_message.content = response_text
 
                     # Auto scroll to bottom
                     ui.run_javascript("window.scrollTo(0, document.body.scrollHeight)")
 
-                # Check if tool calls are detected in the stream message
-                if hasattr(result, "tool_calls") and result.tool_calls:
-                    try:
-                        # Ensure tool_calls is iterable and contains valid objects
-                        if isinstance(result.tool_calls, list):
-                            detected_tool_calls.extend(result.tool_calls)
-                            logger.debug(
-                                f"Tool calls detected in stream: {len(result.tool_calls)} tools"
-                            )
-                        else:
-                            logger.debug(
-                                f"Tool calls is not a list: {type(result.tool_calls)}"
-                            )
-                    except Exception as e:
-                        logger.error(f"Error processing tool calls: {e}")
+                if result.tool_calls:
+                    detected_tool_calls.extend(result.tool_calls)
 
             # Check if we need to handle tool confirmation
             next_action = self.burr_app.get_next_action()
-            logger.debug(f"Next action: {next_action.name if next_action else 'None'}")
-            logger.debug(
-                f"Detected tool calls in stream: {len(detected_tool_calls)} tools"
-            )
 
             if (
                 next_action and next_action.name == "human_confirm"
@@ -229,9 +205,6 @@ class ChatInterface:
 
                 # First, try to use tool calls from the stream
                 if detected_tool_calls:
-                    logger.debug(
-                        f"Using tool calls from stream: {len(detected_tool_calls)} tools"
-                    )
                     for tool_call in detected_tool_calls:
                         try:
                             # Extract tool information from ToolCall object
@@ -245,46 +218,10 @@ class ChatInterface:
                                     "arguments": arguments,
                                 }
                             )
-                            logger.debug(
-                                f"Added tool from stream: {tool_call.function.name} with args: {arguments}"
-                            )
                         except Exception as e:
                             logger.error(f"Error processing tool call from stream: {e}")
 
-                # If no tools from stream, try application state as fallback
-                if not pending_tools:
-                    app_state = self.burr_app.state
-                    logger.debug(
-                        f"App state has pending_tool_calls: {hasattr(app_state, 'pending_tool_calls')}"
-                    )
-                    if (
-                        hasattr(app_state, "pending_tool_calls")
-                        and app_state.pending_tool_calls
-                    ):
-                        logger.debug(
-                            f"Pending tool calls from state: {len(app_state.pending_tool_calls)}"
-                        )
-                        for tool_call in app_state.pending_tool_calls:
-                            try:
-                                arguments = tool_call.function.arguments
-                                if isinstance(arguments, str):
-                                    arguments = json.loads(arguments)
-
-                                pending_tools.append(
-                                    {
-                                        "name": tool_call.function.name,
-                                        "arguments": arguments,
-                                    }
-                                )
-                            except Exception as e:
-                                logger.error(
-                                    f"Error processing tool call from state: {e}"
-                                )
-
                 if pending_tools:
-                    logger.debug(
-                        f"Creating tool confirmation buttons for {len(pending_tools)} tools"
-                    )
                     try:
                         # Remove current spinner
                         if self.current_spinner:
@@ -309,13 +246,10 @@ class ChatInterface:
                                         on_click=lambda: asyncio.create_task(self.handle_tool_confirmation(False))
                                     ).props("size=sm")
 
-                        logger.debug("Tool confirmation buttons created successfully")
                         # Don't continue processing - wait for user confirmation
                         return
                     except Exception as e:
                         logger.error(f"Error creating tool confirmation buttons: {e}")
-                else:
-                    logger.debug("No pending tools found")
 
         except Exception as e:
             # Handle errors
@@ -464,7 +398,7 @@ class ChatInterface:
         # Compact header
         with ui.header().classes("app-header").style("height: 56px"):
             with ui.row().classes("w-full items-center justify-between px-4"):
-                ui.label("🤖 Burr Agent").classes("text-h6 font-medium")
+                ui.label(f"🤖 {AGENT_NAME}").classes("text-h6 font-medium")
                 ui.button(
                     icon="refresh",
                     on_click=lambda: asyncio.create_task(self.clear_chat()),
@@ -502,7 +436,7 @@ async def main():
 if __name__ == "__main__":
     # Enable async support in NiceGUI
     ui.run(
-        title="Burr Agent Web Chat with Tools",
+        title=f"{AGENT_NAME} Web Chat with Tools",
         native=False,
         port=native.find_open_port(start_port=8080),
         host="127.0.0.1",
