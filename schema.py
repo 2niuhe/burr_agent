@@ -207,8 +207,8 @@ class Memory(BaseModel):
             system_messages = [Message.system_message(content=COMPRESS_MEMORY_PROMPT)]
             user_messages = self.get_messages_except_system()
             content = await ask(user_messages, system_msgs=system_messages, stream=False)
-            self.messages.clear(except_roles=[Role.SYSTEM])
-            self.messages.append(Message.user_message(content=content))
+            self.clear(except_roles=[Role.SYSTEM])
+            self.append(Message.user_message(content=content))
 
 
     def append(self, message: Message, compress: bool = False) -> None:
