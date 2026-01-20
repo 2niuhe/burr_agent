@@ -5,15 +5,16 @@ from typing import Any, Dict, List, Optional, Type, Union
 from pydantic import BaseModel
 
 from logger import logger
+from schema import Message
 from utils.llm import ask
 
 # Only tested with vllm server
 
 
 async def ask_choice(
-    messages: list[dict],
+    messages: List[Message],
     choices: list[str],
-    system_msgs: list[dict] = None,
+    system_msgs: List[Message] = None,
     temperature: Optional[float] = None,
     **kwargs,
 ) -> str:
@@ -49,9 +50,9 @@ async def ask_choice(
 
 
 async def ask_regex(
-    messages: List[Dict],
+    messages: List[Message],
     pattern: str,
-    system_msgs: List[Dict] = None,
+    system_msgs: List[Message] = None,
     temperature: Optional[float] = None,
     stop: Optional[List[str]] = None,
     **kwargs,
@@ -79,9 +80,9 @@ async def ask_regex(
 
 
 async def ask_json(
-    messages: list[dict],
+    messages: List[Message],
     schema: Union[Type[BaseModel], dict[str, Any]],
-    system_msgs: list[dict] = None,
+    system_msgs: List[Message] = None,
     temperature: Optional[float] = None,
     **kwargs,
 ) -> str:
@@ -95,6 +96,15 @@ async def ask_json(
             "guided_json": json_schema,
         }
 
+        # response_format = {
+        #     "type": "json_object",
+        #     "json_schema": {
+        #         "name": "response",
+        #         "schema": json_schema,
+        #         "strict": True,
+        #     },
+        # }
+
         extra_body.update(kwargs)
 
         response = await ask(
@@ -104,6 +114,8 @@ async def ask_json(
             stream=False,
             temperature=temperature,
             extra_body=extra_body,
+            # response_format=response_format,
+            **kwargs,
         )
         if response:
             result = response.strip()
@@ -211,9 +223,9 @@ def _parse_json_safety_to_model(
 
 
 async def ask_json_parsed(
-    messages: list[dict],
+    messages: List[Message],
     schema: Optional[Dict[str, Any]] = None,
-    system_msgs: list[dict] = None,
+    system_msgs: List[Message] = None,
     temperature: Optional[float] = None,
     max_retries: int = 2,
     **kwargs,
@@ -245,9 +257,9 @@ async def ask_json_parsed(
 
 
 async def ask_model_parsed(
-    messages: list[dict],
+    messages: List[Message],
     model_class: Type[BaseModel],
-    system_msgs: list[dict] = None,
+    system_msgs: List[Message] = None,
     temperature: Optional[float] = None,
     max_retries: int = 2,
     **kwargs,
