@@ -19,7 +19,7 @@ async def ask_choice(
     **kwargs,
 ) -> str:
     extra_body = {
-        "guided_choice": choices,
+        "structured_output": {"choice": choices},
     }
 
     extra_body.update(kwargs)
@@ -58,7 +58,7 @@ async def ask_regex(
     **kwargs,
 ) -> str:
     extra_body = {
-        "guide_regex": pattern,
+        "structured_output": {"regex": pattern},
     }
 
     if stop:
@@ -93,7 +93,7 @@ async def ask_json(
             json_schema = schema
 
         extra_body = {
-            "guided_json": json_schema,
+            "structured_output": {"json": json_schema},
         }
 
         # response_format = {
